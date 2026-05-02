@@ -20,28 +20,69 @@ import type {
   ArrangerNote,
   CustomDisbursement,
   FormState,
+  Person,
   PriceItem,
   Wishes,
 } from "@/lib/types";
 import { FALLBACK_PRICING } from "@/lib/fallbackPricing";
 
-const STEP_LABELS = [
-  "Your details",
-  "Funeral type",
-  "Service",
-  "Coffin",
-  "Transport",
-  "Additional services",
-  "Disbursements",
-  "Wishes & info",
-  "Summary",
-];
+// Stable keys for each wizard step. The visible label / display order is
+// derived from STEP_LABEL_MAP, and a "person" step is conditionally inserted
+// when arrangementFor === "Someone else" (see stepKeysFor() below).
+type StepKey =
+  | "customer"
+  | "person"
+  | "funeral"
+  | "service"
+  | "coffin"
+  | "transport"
+  | "additional"
+  | "disbursements"
+  | "wishes"
+  | "summary";
 
-const EMPTY_WISHES: Wishes = {
+const STEP_LABEL_MAP: Record<StepKey, string> = {
+  customer: "Your details",
+  person: "Person details",
+  funeral: "Funeral type",
+  service: "Service",
+  coffin: "Coffin",
+  transport: "Transport",
+  additional: "Additional services",
+  disbursements: "Disbursements",
+  wishes: "Wishes & info",
+  summary: "Summary",
+};
+
+function stepKeysFor(arrangementFor: string): StepKey[] {
+  const base: StepKey[] = [
+    "customer",
+    "funeral",
+    "service",
+    "coffin",
+    "transport",
+    "additional",
+    "disbursements",
+    "wishes",
+    "summary",
+  ];
+  if (arrangementFor === "Someone else") {
+    return ["customer", "person", ...base.slice(1)];
+  }
+  return base;
+}
+
+const EMPTY_PERSON: Person = {
+  fullName: "",
   dateOfBirth: "",
+  address: "",
+  relationship: "",
+  doctorName: "",
   nextOfKinName: "",
   nextOfKinPhone: "",
-  doctorName: "",
+};
+
+const EMPTY_WISHES: Wishes = {
   officiant: "",
   music: "",
   readings: "",
@@ -60,6 +101,7 @@ const EMPTY_FORM: FormState = {
     branch: "",
     arrangementFor: "",
   },
+  person: EMPTY_PERSON,
   funeralType: "",
   serviceChoice: "",
   coffin: "",
@@ -141,10 +183,25 @@ export default function Home() {
   const lines = useMemo(() => buildSelectedLines(form, pricing), [form, pricing]);
   const totals = useMemo(() => totalsForLines(lines), [lines]);
 
+  const stepKeys = useMemo(
+    () => stepKeysFor(form.customer.arrangementFor),
+    [form.customer.arrangementFor],
+  );
+  const stepLabels = useMemo(
+    () => stepKeys.map((k) => STEP_LABEL_MAP[k]),
+    [stepKeys],
+  );
+  // Clamp the step index in case the keys list shrank (e.g. user went from
+  // "Someone else" back to "Myself" while on the inserted person step).
+  const safeStep = Math.min(step, stepKeys.length - 1);
+  const stepKey = stepKeys[safeStep];
+
   const updateCustomer = (patch: Partial<FormState["customer"]>) =>
     setForm((f) => ({ ...f, customer: { ...f.customer, ...patch } }));
+  const updatePerson = (patch: Partial<Person>) =>
+    setForm((f) => ({ ...f, person: { ...f.person, ...patch } }));
 
-  const goNext = () => setStep((s) => Math.min(s + 1, STEP_LABELS.length - 1));
+  const goNext = () => setStep((s) => Math.min(s + 1, stepKeys.length - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
   const toggleIn = (list: string[], name: string) =>
@@ -208,13 +265,16 @@ export default function Home() {
         )}
       </div>
 
-      <ProgressBar current={step} total={STEP_LABELS.length} labels={STEP_LABELS} />
+      <ProgressBar current={safeStep} total={stepKeys.length} labels={stepLabels} />
 
       <div className="rounded-2xl bg-white p-5 shadow-soft sm:p-8">
-        {step === 0 && (
+        {stepKey === "customer" && (
           <StepCustomer form={form} update={updateCustomer} />
         )}
-        {step === 1 && (
+        {stepKey === "person" && (
+          <StepPerson person={form.person} update={updatePerson} />
+        )}
+        {stepKey === "funeral" && (
           <StepFuneralType
             items={
               itemsByCategory(pricing, "funeral_type").length > 0
@@ -245,7 +305,7 @@ export default function Home() {
             }
           />
         )}
-        {step === 2 && (
+        {stepKey === "service" && (
           <StepSingleChoice
             title="Where would the service take place?"
             description="Choose the option that feels closest to what you'd like."
@@ -258,7 +318,7 @@ export default function Home() {
             onChange={(name) => setForm((f) => ({ ...f, serviceChoice: name }))}
           />
         )}
-        {step === 3 && (
+        {stepKey === "coffin" && (
           <StepSingleChoice
             title="Coffin selection"
             description="Our coffins range from simple and natural to traditional and crafted."
@@ -267,7 +327,7 @@ export default function Home() {
             onChange={(name) => setForm((f) => ({ ...f, coffin: name }))}
           />
         )}
-        {step === 4 && (
+        {stepKey === "transport" && (
           <StepTransport
             items={itemsByCategory(pricing, "transport")}
             selected={form.transport}
@@ -276,7 +336,7 @@ export default function Home() {
             }
           />
         )}
-        {step === 5 && (
+        {stepKey === "additional" && (
           <StepMultiChoice
             title="Additional services"
             description="Tick anything you're interested in. You can add or remove items later."
@@ -290,7 +350,7 @@ export default function Home() {
             }
           />
         )}
-        {step === 6 && (
+        {stepKey === "disbursements" && (
           <StepDisbursements
             items={itemsByCategory(pricing, "disbursement")}
             selected={form.disbursements}
@@ -313,7 +373,7 @@ export default function Home() {
             }
           />
         )}
-        {step === 7 && (
+        {stepKey === "wishes" && (
           <StepWishes
             wishes={form.wishes}
             update={(patch) =>
@@ -321,7 +381,7 @@ export default function Home() {
             }
           />
         )}
-        {step === 8 && (
+        {stepKey === "summary" && (
           <StepSummary
             form={form}
             lines={lines}
@@ -338,16 +398,16 @@ export default function Home() {
           />
         )}
 
-        {step === 0 ? (
+        {stepKey === "customer" ? (
           <StepNav onNext={goNext} nextDisabled={!customerValid} hideBack />
-        ) : step === STEP_LABELS.length - 1 ? (
+        ) : stepKey === "summary" ? (
           <SummaryActions form={form} lines={lines} onBack={goBack} />
         ) : (
           <StepNav onBack={goBack} onNext={goNext} />
         )}
       </div>
 
-      {step !== STEP_LABELS.length - 1 && (
+      {stepKey !== "summary" && (
         <RunningTotal
           funeralTotal={totals.funeralTotal}
           disbursementsTotal={totals.disbursementsTotal}
@@ -505,6 +565,89 @@ function StepFuneralType({
   );
 }
 
+function StepPerson({
+  person,
+  update,
+}: {
+  person: Person;
+  update: (patch: Partial<Person>) => void;
+}) {
+  return (
+    <div>
+      <h2 className="heading-serif text-2xl text-navy-900 sm:text-3xl">
+        Person being arranged for
+      </h2>
+      <p className="mt-1 text-mist-400">
+        Details of the person the funeral plan is for. All optional except the
+        name — share what you know now, the rest can be filled in later.
+      </p>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label className="field-label">Full name *</label>
+          <input
+            className="field-input"
+            value={person.fullName}
+            onChange={(e) => update({ fullName: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Date of birth</label>
+          <input
+            className="field-input"
+            type="text"
+            placeholder="e.g. 14 March 1945"
+            value={person.dateOfBirth}
+            onChange={(e) => update({ dateOfBirth: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Relationship to you</label>
+          <input
+            className="field-input"
+            placeholder="e.g. mother, spouse, friend"
+            value={person.relationship}
+            onChange={(e) => update({ relationship: e.target.value })}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="field-label">Home address</label>
+          <textarea
+            className="field-input min-h-[72px]"
+            value={person.address}
+            onChange={(e) => update({ address: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Doctor / GP name</label>
+          <input
+            className="field-input"
+            value={person.doctorName}
+            onChange={(e) => update({ doctorName: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Next of kin — name</label>
+          <input
+            className="field-input"
+            value={person.nextOfKinName}
+            onChange={(e) => update({ nextOfKinName: e.target.value })}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="field-label">Next of kin — telephone</label>
+          <input
+            className="field-input"
+            inputMode="tel"
+            value={person.nextOfKinPhone}
+            onChange={(e) => update({ nextOfKinPhone: e.target.value })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepWishes({
   wishes,
   update,
@@ -523,49 +666,6 @@ function StepWishes({
       </p>
 
       <section className="mt-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
-          About the person
-        </h3>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="field-label">Date of birth</label>
-            <input
-              className="field-input"
-              type="text"
-              placeholder="e.g. 14 March 1945"
-              value={wishes.dateOfBirth}
-              onChange={(e) => update({ dateOfBirth: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="field-label">Doctor / GP name</label>
-            <input
-              className="field-input"
-              value={wishes.doctorName}
-              onChange={(e) => update({ doctorName: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="field-label">Next of kin — name</label>
-            <input
-              className="field-input"
-              value={wishes.nextOfKinName}
-              onChange={(e) => update({ nextOfKinName: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="field-label">Next of kin — telephone</label>
-            <input
-              className="field-input"
-              inputMode="tel"
-              value={wishes.nextOfKinPhone}
-              onChange={(e) => update({ nextOfKinPhone: e.target.value })}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-7">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
           Service preferences
         </h3>
@@ -908,18 +1008,32 @@ function StepSummary({
   const funeralLines = lines.filter((l) => l.category !== "disbursement");
   const disbLines = lines.filter((l) => l.category === "disbursement");
   const isDirect = isDirectFuneralType(form.funeralType);
-  const wishEntries: Array<[string, string]> = [
-    ["Date of birth", form.wishes.dateOfBirth],
-    ["Doctor / GP", form.wishes.doctorName],
-    ["Next of kin", form.wishes.nextOfKinName + (form.wishes.nextOfKinPhone ? ` · ${form.wishes.nextOfKinPhone}` : "")],
-    ["Minister / officiant", form.wishes.officiant],
-    ["Hymns & music", form.wishes.music],
-    ["Readings", form.wishes.readings],
-    ["Flowers / donations", form.wishes.flowers],
-    ["Dress code", form.wishes.dressCode],
-    ["Catering / wake", form.wishes.catering],
-    ["Anything else", form.wishes.other],
-  ].filter(([, v]) => v && v.trim() !== "" && v.trim() !== "·") as Array<[string, string]>;
+  const personEntries: Array<[string, string]> = (
+    [
+      ["Full name", form.person.fullName],
+      ["Date of birth", form.person.dateOfBirth],
+      ["Relationship", form.person.relationship],
+      ["Address", form.person.address],
+      ["Doctor / GP", form.person.doctorName],
+      [
+        "Next of kin",
+        form.person.nextOfKinName +
+          (form.person.nextOfKinPhone ? ` · ${form.person.nextOfKinPhone}` : ""),
+      ],
+    ] as Array<[string, string]>
+  ).filter(([, v]) => v && v.trim() !== "" && v.trim() !== "·");
+
+  const wishEntries: Array<[string, string]> = (
+    [
+      ["Minister / officiant", form.wishes.officiant],
+      ["Hymns & music", form.wishes.music],
+      ["Readings", form.wishes.readings],
+      ["Flowers / donations", form.wishes.flowers],
+      ["Dress code", form.wishes.dressCode],
+      ["Catering / wake", form.wishes.catering],
+      ["Anything else", form.wishes.other],
+    ] as Array<[string, string]>
+  ).filter(([, v]) => v && v.trim() !== "");
 
   return (
     <div>
@@ -990,6 +1104,22 @@ function StepSummary({
           <p className="mt-2 text-xs italic text-mist-400">
             Estimated third-party costs may change.
           </p>
+        </section>
+      )}
+
+      {personEntries.length > 0 && (
+        <section className="mt-5 rounded-xl border border-mist-200 p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
+            Person being arranged for
+          </h3>
+          <dl className="mt-3 space-y-2 text-sm">
+            {personEntries.map(([label, value]) => (
+              <div key={label} className="flex flex-col sm:grid sm:grid-cols-[170px_1fr] sm:gap-3">
+                <dt className="text-xs uppercase tracking-wider text-mist-400">{label}</dt>
+                <dd className="text-navy-900 whitespace-pre-wrap">{value}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
       )}
 
@@ -1248,6 +1378,7 @@ function SummaryActions({
     }
 
     const totals = totalsForLines(lines);
+    const isForSomeoneElse = form.customer.arrangementFor === "Someone else";
     const messageLines = [
       `📋 NEW ESTIMATE — ${form.customer.fullName || "(no name)"}`,
       `Ref: ${pdfResult.estimateId}`,
@@ -1256,6 +1387,14 @@ function SummaryActions({
       `Email: ${form.customer.email || "—"}`,
       `Branch: ${form.customer.branch || "—"}`,
       `For: ${form.customer.arrangementFor || "—"}`,
+      ...(isForSomeoneElse && form.person.fullName.trim() !== ""
+        ? [
+            "",
+            `Person: ${form.person.fullName}` +
+              (form.person.relationship ? ` (${form.person.relationship})` : ""),
+            ...(form.person.dateOfBirth ? [`DOB: ${form.person.dateOfBirth}`] : []),
+          ]
+        : []),
       "",
       "Selections:",
       ...lines.map((l) => `• ${l.item_name} — ${formatGBP(l.price)}`),

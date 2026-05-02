@@ -149,6 +149,49 @@ export async function generateEstimatePdf(
     y += 14 * Math.max(1, wrapped.length);
   }
 
+  // ---- Person being arranged for (only when "Someone else" + name supplied)
+  if (form.customer.arrangementFor === "Someone else" && form.person.fullName.trim() !== "") {
+    y += 12;
+    if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text("Person being arranged for", margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40, 40, 40);
+    y += 16;
+
+    const personLines: [string, string][] = [
+      ["Full name", form.person.fullName],
+      ["Date of birth", form.person.dateOfBirth || "—"],
+      ["Relationship", form.person.relationship || "—"],
+      ["Address", form.person.address || "—"],
+      ["Doctor / GP", form.person.doctorName || "—"],
+      [
+        "Next of kin",
+        [form.person.nextOfKinName, form.person.nextOfKinPhone]
+          .filter((s) => s && s.trim() !== "")
+          .join(" · ") || "—",
+      ],
+    ];
+    for (const [label, value] of personLines) {
+      const wrapped = doc.splitTextToSize(value, contentWidth - 110);
+      const blockHeight = 14 * Math.max(1, wrapped.length);
+      if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+        addPage();
+        y = LETTERHEAD_TOP_SAFE;
+      }
+      doc.setFont("helvetica", "bold");
+      doc.text(`${label}:`, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(wrapped, margin + 110, y);
+      y += blockHeight;
+    }
+  }
+
   // ---- Itemised table
   const funeralRows = lines
     .filter((l) => l.category !== "disbursement")
@@ -285,9 +328,6 @@ export async function generateEstimatePdf(
   const w = form.wishes;
   const wishPairs: Array<[string, string]> = (
     [
-      ["Date of birth", w.dateOfBirth],
-      ["Doctor / GP", w.doctorName],
-      ["Next of kin", [w.nextOfKinName, w.nextOfKinPhone].filter(Boolean).join(" · ")],
       ["Minister / officiant", w.officiant],
       ["Hymns & music", w.music],
       ["Readings", w.readings],

@@ -36,11 +36,22 @@ export interface CustomerDetails {
   arrangementFor: ArrangementFor | "";
 }
 
-export interface Wishes {
+// Details about the person the plan is being arranged for. Only collected
+// when customer.arrangementFor === "Someone else"; for "Myself", the
+// customer block IS the person, and these fields stay empty. Includes
+// DOB / doctor / next-of-kin which used to live on Wishes — they're more
+// naturally part of "the person" than service preferences.
+export interface Person {
+  fullName: string;
   dateOfBirth: string;
+  address: string;
+  relationship: string;
+  doctorName: string;
   nextOfKinName: string;
   nextOfKinPhone: string;
-  doctorName: string;
+}
+
+export interface Wishes {
   officiant: string;
   music: string;
   readings: string;
@@ -65,6 +76,7 @@ export interface CustomDisbursement {
 
 export interface FormState {
   customer: CustomerDetails;
+  person: Person;
   funeralType: string;
   serviceChoice: string;
   coffin: string;
