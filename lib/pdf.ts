@@ -347,9 +347,15 @@ export async function generateEstimatePdf(
         0: { cellWidth: 110 },
         2: { cellWidth: 90, halign: "right" },
       },
-      // bottom margin keeps autoTable's auto-pagination above the
-      // letterhead's contact-info band (page height − safe bottom).
-      margin: { left: margin, right: margin, bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE },
+      // top margin keeps the table below the letterhead logo on
+      // continuation pages; bottom margin keeps autoTable's auto-
+      // pagination above the contact-info band.
+      margin: {
+        left: margin,
+        right: margin,
+        top: LETTERHEAD_TOP_SAFE,
+        bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE,
+      },
       // autoTable creates its own pages when the table is long; restamp
       // the letterhead on those new pages so the branding never drops.
       willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
@@ -388,9 +394,15 @@ export async function generateEstimatePdf(
         0: { cellWidth: 110 },
         2: { cellWidth: 90, halign: "right" },
       },
-      // bottom margin keeps autoTable's auto-pagination above the
-      // letterhead's contact-info band (page height − safe bottom).
-      margin: { left: margin, right: margin, bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE },
+      // top margin keeps the table below the letterhead logo on
+      // continuation pages; bottom margin keeps autoTable's auto-
+      // pagination above the contact-info band.
+      margin: {
+        left: margin,
+        right: margin,
+        top: LETTERHEAD_TOP_SAFE,
+        bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE,
+      },
       // autoTable creates its own pages when the table is long; restamp
       // the letterhead on those new pages so the branding never drops.
       willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
