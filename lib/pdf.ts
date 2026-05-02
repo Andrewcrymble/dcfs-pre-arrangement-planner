@@ -177,13 +177,27 @@ export async function generateEstimatePdf(
   doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
 
   // ============================================================
-  // ---- Page 2 onwards: itemised estimate
+  // ---- Page 2: Person being arranged for + Wishes (only if one
+  // exists — otherwise we skip the page entirely and the prices flow
+  // straight from the cover letter onto page 2).
   // ============================================================
-  addPage();
+  const hasPersonBlock =
+    form.customer.arrangementFor === "Someone else" &&
+    form.person.fullName.trim() !== "";
+  const _w = form.wishes;
+  const hasAnyWish = [
+    _w.officiant, _w.music, _w.readings, _w.flowers,
+    _w.dressCode, _w.catering, _w.other,
+  ].some((v) => typeof v === "string" && v.trim() !== "");
+  const hasPage2Content = hasPersonBlock || hasAnyWish;
+
+  if (hasPage2Content) {
+    addPage();
+  }
   y = LETTERHEAD_TOP_SAFE;
 
   // ---- Person being arranged for (only when "Someone else" + name supplied)
-  if (form.customer.arrangementFor === "Someone else" && form.person.fullName.trim() !== "") {
+  if (hasPersonBlock) {
     y += 12;
     if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
       addPage();
@@ -278,10 +292,16 @@ export async function generateEstimatePdf(
   }
 
   // ============================================================
-  // ---- Page 3 onwards: prices and information
+  // ---- Prices and information page break
   // ============================================================
-  addPage();
-  y = LETTERHEAD_TOP_SAFE;
+  // If we drew person/wishes on page 2, page-break to start the prices
+  // section on its own page. If page 2 was skipped (no person, no
+  // wishes) the prices section flows directly onto page 2 from the
+  // cover letter so the customer never sees a blank page.
+  if (hasPage2Content) {
+    addPage();
+    y = LETTERHEAD_TOP_SAFE;
+  }
 
   // ---- Itemised table
   const funeralRows = lines
