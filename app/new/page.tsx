@@ -114,6 +114,42 @@ const EMPTY_FORM: FormState = {
   arrangerNotes: [],
 };
 
+// Returns the local-time ISO string (no timezone suffix) for "9am, 7 days
+// from now, rolled forward to Monday if it lands on Saturday or Sunday".
+// Microsoft Graph applies the Europe/London timezone server-side.
+function followUpStartIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  d.setHours(9, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+function addMinutesIsoLocal(iso: string, minutes: number): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return iso;
+  const d = new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] || 0),
+  );
+  d.setMinutes(d.getMinutes() + minutes);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   // Chunked conversion to avoid stack-overflow on String.fromCharCode(...bytes)
   // for any non-trivial PDF size.
@@ -1515,11 +1551,53 @@ function SummaryActions({
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
+      // Post-send admin: if this was a previously-booked appointment,
+      // promote it from "Appointment" to "Quoted" now that the wizard
+      // is done. Failures here are silent — the WhatsApp message has
+      // already gone, the user-facing happy path is preserved.
+      if (editRef) {
+        try {
+          await fetch("/api/estimates", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ref: editRef, status: "Quoted" }),
+          });
+        } catch {
+          // Ignore — staff can move it manually on the dashboard.
+        }
+      }
+
+      // Schedule a 7-day follow-up reminder in Outlook (next weekday at
+      // 9am). Best-effort — if MS isn't connected, /api/microsoft/event
+      // returns 500/503 and we just skip silently.
+      let followUpNote = "";
+      try {
+        const start = followUpStartIso();
+        const end = addMinutesIsoLocal(start, 30);
+        const subject =
+          `Follow up: ${form.customer.fullName || "customer"} — Pre-arrangement plan`;
+        const bodyHtml =
+          `<p>Reference: <b>${pdfResult.estimateId}</b></p>` +
+          `<p>Phone: ${form.customer.telephone || "—"}</p>` +
+          `<p>Branch: ${form.customer.branch || "—"}</p>` +
+          (driveUrl ? `<p>PDF: <a href="${driveUrl}">${driveUrl}</a></p>` : "");
+        const fuRes = await fetch("/api/microsoft/event", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ subject, start, end, bodyHtml }),
+        });
+        if (fuRes.ok) {
+          followUpNote = " · 7-day follow-up added to Outlook";
+        }
+      } catch {
+        // No-op; reminder is best-effort.
+      }
+
       setToast({
         kind: "success",
         text: driveUrl
-          ? `Sent · Ref ${pdfResult.estimateId} · PDF link in message`
-          : `Sent · Ref ${pdfResult.estimateId}${driveError ? ` · (Drive: ${driveError})` : ""}`,
+          ? `Sent · Ref ${pdfResult.estimateId} · PDF link in message${followUpNote}`
+          : `Sent · Ref ${pdfResult.estimateId}${driveError ? ` · (Drive: ${driveError})` : ""}${followUpNote}`,
       });
     } catch (err) {
       console.error("WhatsApp send failed:", err);
