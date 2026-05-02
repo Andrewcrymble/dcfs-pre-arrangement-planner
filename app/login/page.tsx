@@ -3,12 +3,12 @@ import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams: { from?: string };
 }) {
-  const users = listUserNames();
+  const users = await listUserNames();
   const fromPath = searchParams.from && searchParams.from.startsWith("/") ? searchParams.from : "/";
 
   return (

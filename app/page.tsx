@@ -1355,16 +1355,28 @@ function SummaryActions({
       return;
     }
 
-    // Try to upload the PDF to Drive and get a shareable link. Failures here
-    // are non-fatal — we still send the WhatsApp summary.
+    // Try to upload the PDF to Drive (which also logs a row to the
+    // Estimates sheet for the dashboard) and get a shareable link.
+    // Failures here are non-fatal — we still send the WhatsApp summary.
     let driveUrl: string | null = null;
     let driveError: string | null = null;
     try {
       const pdfBase64 = uint8ArrayToBase64(pdfResult.bytes);
+      const totalsForUpload = totalsForLines(lines);
       const resp = await fetch("/api/upload-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pdfBase64, filename: pdfResult.filename }),
+        body: JSON.stringify({
+          pdfBase64,
+          filename: pdfResult.filename,
+          estimateId: pdfResult.estimateId,
+          customer: form.customer,
+          person:
+            form.customer.arrangementFor === "Someone else"
+              ? form.person
+              : null,
+          total: totalsForUpload.grandTotal,
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data?.url) {

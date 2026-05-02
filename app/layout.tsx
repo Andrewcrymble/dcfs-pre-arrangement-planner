@@ -44,15 +44,34 @@ export default async function RootLayout({
                     <SignOutButton />
                   </p>
                 )}
-                {process.env.NEXT_PUBLIC_SHEETS_EDIT_URL && session && (
-                  <a
-                    href={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-block text-xs text-mist-100/70 underline-offset-2 transition hover:text-white hover:underline"
-                  >
-                    Edit pricing sheet ↗
-                  </a>
+                {session && (
+                  <p className="mt-1 flex flex-wrap justify-end gap-x-3 text-xs text-mist-100/80">
+                    <a href="/" className="underline-offset-2 hover:text-white hover:underline">
+                      New estimate
+                    </a>
+                    <a
+                      href="/dashboard"
+                      className="underline-offset-2 hover:text-white hover:underline"
+                    >
+                      Dashboard
+                    </a>
+                    <a
+                      href="/change-password"
+                      className="underline-offset-2 hover:text-white hover:underline"
+                    >
+                      Change password
+                    </a>
+                    {process.env.NEXT_PUBLIC_SHEETS_EDIT_URL && (
+                      <a
+                        href={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline-offset-2 hover:text-white hover:underline"
+                      >
+                        Edit pricing ↗
+                      </a>
+                    )}
+                  </p>
                 )}
               </div>
             </div>

@@ -9,13 +9,13 @@ import { NextResponse } from "next/server";
 // The client posts { pdfBase64, filename } to this route; we add the secret
 // and forward to DRIVE_UPLOAD_URL.
 export async function POST(req: Request) {
-  let payload: { pdfBase64?: unknown; filename?: unknown } = {};
+  let payload: Record<string, unknown> = {};
   try {
     payload = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { pdfBase64, filename } = payload;
+  const { pdfBase64, filename, estimateId, customer, person, total } = payload;
   if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
     return NextResponse.json({ error: "pdfBase64 required" }, { status: 400 });
   }
@@ -35,8 +35,15 @@ export async function POST(req: Request) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         secret,
+        action: "upload",
         pdfBase64,
         filename: typeof filename === "string" ? filename : "estimate.pdf",
+        // Estimate metadata — Apps Script appends a row to the Estimates
+        // sheet using these. Apps Script tolerates them being absent.
+        estimateId,
+        customer,
+        person,
+        total,
       }),
       cache: "no-store",
       // Apps Script web apps usually 302 from /exec to a googleusercontent
