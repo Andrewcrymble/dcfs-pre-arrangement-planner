@@ -47,13 +47,13 @@ export default async function RootLayout({
                 {session && (
                   <p className="mt-1 flex flex-wrap justify-end gap-x-3 text-xs text-mist-100/80">
                     <a href="/" className="underline-offset-2 hover:text-white hover:underline">
-                      New estimate
+                      Dashboard
                     </a>
                     <a
-                      href="/dashboard"
+                      href="/new"
                       className="underline-offset-2 hover:text-white hover:underline"
                     >
-                      Dashboard
+                      New estimate
                     </a>
                     <a
                       href="/change-password"

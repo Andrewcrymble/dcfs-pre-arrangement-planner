@@ -125,7 +125,7 @@ export default function ChangePasswordPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
           <Link href="/" className="btn-secondary text-center">
-            ← Back to estimate
+            ← Back to dashboard
           </Link>
           <button
             type="submit"
