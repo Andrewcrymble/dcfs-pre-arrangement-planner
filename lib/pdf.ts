@@ -82,6 +82,7 @@ export async function generateEstimatePdf(
   form: FormState,
   lines: SelectedLine[],
   estimateId: string = generateEstimateId(),
+  options: { skipDownload?: boolean } = {},
 ): Promise<{ bytes: Uint8Array; filename: string; estimateId: string }> {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -517,7 +518,13 @@ export async function generateEstimatePdf(
     .replace(/[^a-z0-9]+/gi, "_")
     .toLowerCase();
   const filename = `${estimateId}-${safeName}.pdf`;
-  doc.save(filename);
+  // Mobile browsers (especially Safari) handle doc.save() inconsistently —
+  // the download can silently fail or interrupt the JS flow. Callers that
+  // only need the bytes (e.g. the WhatsApp pipeline that uploads to Drive)
+  // pass skipDownload: true so we never invoke the local download dialog.
+  if (!options.skipDownload) {
+    doc.save(filename);
+  }
   return {
     bytes: new Uint8Array(doc.output("arraybuffer")),
     filename,

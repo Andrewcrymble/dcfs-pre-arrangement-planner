@@ -1319,17 +1319,34 @@ function SummaryActions({
   onBack: () => void;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const [toast, setToast] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  // Toast auto-dismisses after 6 seconds. Stored in a ref-less effect so
+  // each new toast resets the timer cleanly.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const handleDownload = async () => {
     if (downloading) return;
     setDownloading(true);
     try {
       const result = await generateEstimatePdf(form, lines);
-      alert(`PDF downloaded.\n\nReference: ${result.estimateId}`);
+      setToast({
+        kind: "success",
+        text: `PDF downloaded · Ref ${result.estimateId}`,
+      });
     } catch (err) {
-      alert(
-        "Sorry — we couldn't generate your PDF. Please try again or contact us directly.",
-      );
       console.error(err);
+      setToast({
+        kind: "error",
+        text: "Couldn't generate PDF — please try again.",
+      });
     } finally {
       setDownloading(false);
     }
@@ -1337,27 +1354,24 @@ function SummaryActions({
 
   const handleWhatsApp = async () => {
     if (downloading) return;
-    // Pipeline: generate PDF (downloads locally + we get bytes back) → upload
-    // bytes to Drive via /api/upload-pdf → WhatsApp message containing the
-    // Drive link goes to Crymble & Sons group via /api/beepmate. Each step
-    // degrades gracefully — if Drive isn't configured, we still send the
-    // text summary; if WhatsApp fails, the PDF is still on disk.
+    // Background pipeline: generate PDF in memory (no local download —
+    // mobile browsers can't reliably trigger it), upload bytes to Drive
+    // via /api/upload-pdf (which also logs a row to the Estimates sheet),
+    // then post a WhatsApp message with the Drive link via /api/beepmate.
+    // Failures at any step degrade gracefully and surface in a toast.
     setDownloading(true);
     let pdfResult: { bytes: Uint8Array; filename: string; estimateId: string };
     try {
-      pdfResult = await generateEstimatePdf(form, lines);
+      pdfResult = await generateEstimatePdf(form, lines, undefined, {
+        skipDownload: true,
+      });
     } catch (err) {
-      alert(
-        "Sorry — we couldn't generate your PDF. Please try again or contact us directly.",
-      );
-      console.error(err);
+      console.error("PDF generation failed:", err);
+      setToast({ kind: "error", text: "Couldn't generate PDF — please try again." });
       setDownloading(false);
       return;
     }
 
-    // Try to upload the PDF to Drive (which also logs a row to the
-    // Estimates sheet for the dashboard) and get a shareable link.
-    // Failures here are non-fatal — we still send the WhatsApp summary.
     let driveUrl: string | null = null;
     let driveError: string | null = null;
     try {
@@ -1382,10 +1396,10 @@ function SummaryActions({
       if (resp.ok && data?.url) {
         driveUrl = data.url as string;
       } else if (resp.status !== 503) {
-        // 503 = Drive not configured yet — that's fine, just skip silently.
         driveError = data?.error || `upload returned ${resp.status}`;
       }
     } catch (err) {
+      console.error("Drive upload failed:", err);
       driveError = err instanceof Error ? err.message : "upload failed";
     }
 
@@ -1426,21 +1440,20 @@ function SummaryActions({
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
-      const driveNote = driveUrl
-        ? "PDF link included in the message."
-        : driveError
-          ? `(PDF not uploaded to Drive: ${driveError})`
-          : "(PDF download is on your computer.)";
-      alert(
-        `Sent to Crymble & Sons WhatsApp.\n\nReference: ${pdfResult.estimateId}\n\n${driveNote}`,
-      );
+      setToast({
+        kind: "success",
+        text: driveUrl
+          ? `Sent · Ref ${pdfResult.estimateId} · PDF link in message`
+          : `Sent · Ref ${pdfResult.estimateId}${driveError ? ` · (Drive: ${driveError})` : ""}`,
+      });
     } catch (err) {
-      console.error(err);
-      alert(
-        "Couldn't send to WhatsApp: " +
-          (err instanceof Error ? err.message : "unknown error") +
-          "\n\nThe PDF has still been downloaded.",
-      );
+      console.error("WhatsApp send failed:", err);
+      setToast({
+        kind: "error",
+        text:
+          "Couldn't send to WhatsApp — " +
+          (err instanceof Error ? err.message : "unknown error"),
+      });
     } finally {
       setDownloading(false);
     }
@@ -1456,7 +1469,7 @@ function SummaryActions({
           type="button"
           onClick={handleWhatsApp}
           disabled={downloading}
-          className="btn-secondary"
+          className="btn-primary"
         >
           {downloading ? "Sending…" : "Send to Crymble & Sons WhatsApp"}
         </button>
@@ -1472,6 +1485,20 @@ function SummaryActions({
       <p className="text-center text-xs text-mist-400">
         This estimate is not a confirmed funeral contract.
       </p>
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
+            toast.kind === "success"
+              ? "bg-navy-700 text-white"
+              : "bg-red-600 text-white"
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }
