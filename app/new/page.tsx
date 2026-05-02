@@ -1661,7 +1661,20 @@ function SummaryActions({
       ...lines.map((l) => `• ${l.item_name} — ${formatGBP(l.price)}`),
       "",
       `Total: ${formatGBP(totals.grandTotal)}`,
-      ...(driveUrl ? ["", `📎 PDF: ${driveUrl}`] : []),
+      // Branded link masks the raw Drive URL — the /p/[ref] route on the
+      // app domain 302s through to the actual file. Falls back to the
+      // raw Drive URL if for some reason driveUrl is set but we don't
+      // have an estimateId (defensive).
+      ...(driveUrl
+        ? [
+            "",
+            `📎 PDF: ${
+              typeof window !== "undefined" && pdfResult.estimateId
+                ? `${window.location.origin}/p/${encodeURIComponent(pdfResult.estimateId)}`
+                : driveUrl
+            }`,
+          ]
+        : []),
     ];
     const message = messageLines.join("\n");
 
