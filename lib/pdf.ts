@@ -82,7 +82,7 @@ export async function generateEstimatePdf(
   form: FormState,
   lines: SelectedLine[],
   estimateId: string = generateEstimateId(),
-  options: { skipDownload?: boolean } = {},
+  options: { skipDownload?: boolean; arrangerName?: string } = {},
 ): Promise<{ bytes: Uint8Array; filename: string; estimateId: string }> {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -98,6 +98,88 @@ export async function generateEstimatePdf(
     doc.addPage();
     drawLetterhead(doc, letterhead, pageWidth, pageHeight);
   };
+
+  // ============================================================
+  // ---- Page 1: Cover letter
+  // ============================================================
+  {
+    let y = LETTERHEAD_TOP_SAFE + 10;
+
+    // Recipient address block (top-left). Customer name first, then their
+    // address split on newlines / commas — whatever they typed.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    if (form.customer.fullName) {
+      doc.text(form.customer.fullName, margin, y);
+      y += 14;
+    }
+    if (form.customer.address) {
+      const addrLines = form.customer.address
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const line of addrLines) {
+        const wrapped = doc.splitTextToSize(line, contentWidth - 220);
+        doc.text(wrapped, margin, y);
+        y += 14 * Math.max(1, wrapped.length);
+      }
+    }
+
+    // Reference + date (right column, aligned to the right margin)
+    doc.setFontSize(10);
+    doc.setTextColor(...SLATE);
+    const dateStr = new Date().toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {
+      align: "right",
+    });
+    doc.text(dateStr, pageWidth - margin, LETTERHEAD_TOP_SAFE + 24, {
+      align: "right",
+    });
+
+    // Salutation
+    y = Math.max(y, LETTERHEAD_TOP_SAFE + 100);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    const salutationName = form.customer.fullName
+      ? form.customer.fullName.split(/\s+/).slice(-1)[0]
+      : "Sir / Madam";
+    doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, y);
+    y += 30;
+
+    // Body
+    const bodyParas = [
+      "Please find attached funeral plan estimate as discussed.",
+      "If we can be any further assistance, please do not hesitate to contact us.",
+    ];
+    for (const para of bodyParas) {
+      const wrapped = doc.splitTextToSize(para, contentWidth);
+      doc.text(wrapped, margin, y);
+      y += wrapped.length * 14 + 14;
+    }
+
+    // Sign-off
+    y += 10;
+    doc.text("Yours sincerely,", margin, y);
+    y += 60; // space for a signature
+    doc.setFont("helvetica", "bold");
+    doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
+
+    // Avoid an unused-variable lint warning — salutationName is intentionally
+    // computed for future use (Mr/Mrs surname-only mode) and kept here.
+    void salutationName;
+  }
+
+  // ============================================================
+  // ---- Page 2 onwards: the estimate itself
+  // ============================================================
+  addPage();
 
   // ---- Title
   let y = LETTERHEAD_TOP_SAFE;

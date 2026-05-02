@@ -19,9 +19,33 @@ interface EstimateRow {
   "PDF URL": string;
 }
 
+interface MsStatus {
+  configured: boolean;
+  connected: boolean;
+  user: string | null;
+}
+
 const STATUS_QUOTED = "Quoted";
 const STATUS_APPOINTMENT = "Appointment";
 const STATUS_SENT_TO_WG = "Sent to WG";
+
+// Combine a YYYY-MM-DD and HH:MM into an ISO string with no timezone — the
+// /api/microsoft/event endpoint adds the Europe/London timezone server-side.
+function combineDateTime(date: string, time: string): string {
+  if (!date) return "";
+  const t = time && /^\d{2}:\d{2}$/.test(time) ? time : "10:00";
+  return `${date}T${t}:00`;
+}
+
+function addMinutesIso(iso: string, minutes: number): string {
+  if (!iso) return iso;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  d.setMinutes(d.getMinutes() + minutes);
+  // Strip trailing Z so the timezone stays inferred (we treat it as local
+  // then send Europe/London to Graph).
+  return d.toISOString().replace(/\.\d+Z$/, "");
+}
 
 function formatGBP(n: number | string): string {
   const num = typeof n === "number" ? n : Number(n);
@@ -52,6 +76,18 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("");
   const [updatingRef, setUpdatingRef] = useState<string | null>(null);
+  const [msStatus, setMsStatus] = useState<MsStatus | null>(null);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  // Booking form
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingBusy, setBookingBusy] = useState(false);
+  const [bFullName, setBFullName] = useState("");
+  const [bPhone, setBPhone] = useState("");
+  const [bEmail, setBEmail] = useState("");
+  const [bBranch, setBBranch] = useState("");
+  const [bDate, setBDate] = useState("");
+  const [bTime, setBTime] = useState("10:00");
 
   const load = async () => {
     setLoading(true);
@@ -68,9 +104,43 @@ export default function DashboardPage() {
     }
   };
 
+  const loadMsStatus = async () => {
+    try {
+      const res = await fetch("/api/microsoft/status", { cache: "no-store" });
+      const data = await res.json();
+      setMsStatus(data);
+    } catch {
+      setMsStatus({ configured: false, connected: false, user: null });
+    }
+  };
+
   useEffect(() => {
     load();
+    loadMsStatus();
+    // Surface result of the OAuth callback (set by /api/microsoft/callback)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const ms = params.get("ms");
+      if (ms === "ok") {
+        setToast({ kind: "success", text: "Microsoft Calendar connected." });
+        // Clean the URL
+        window.history.replaceState({}, "", "/");
+      } else if (ms === "error") {
+        setToast({
+          kind: "error",
+          text: `Couldn't connect Microsoft Calendar: ${params.get("ms_detail") || "unknown"}`,
+        });
+        window.history.replaceState({}, "", "/");
+      }
+    }
   }, []);
+
+  // Auto-dismiss toast after 6s
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const updateStatus = async (
     ref: string,
@@ -90,6 +160,81 @@ export default function DashboardPage() {
       alert(err instanceof Error ? err.message : "Update failed");
     } finally {
       setUpdatingRef(null);
+    }
+  };
+
+  const submitBooking = async () => {
+    if (bookingBusy) return;
+    if (!bFullName.trim() || !bDate) {
+      setToast({ kind: "error", text: "Customer name and date are required." });
+      return;
+    }
+    setBookingBusy(true);
+    try {
+      const customer = {
+        fullName: bFullName.trim(),
+        telephone: bPhone.trim(),
+        email: bEmail.trim(),
+        branch: bBranch,
+      };
+      const apptDateTime = combineDateTime(bDate, bTime);
+      const apptDateLabel = `${bDate} ${bTime}`;
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ customer, appointmentDate: apptDateLabel }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      // Best-effort: create a matching Outlook event if MS is connected
+      let calMsg = "";
+      if (msStatus?.connected) {
+        try {
+          const start = apptDateTime;
+          const end = addMinutesIso(apptDateTime, 30);
+          const subject = `Pre-arrangement appointment — ${bFullName.trim()}`;
+          const bodyHtml =
+            `<p>Reference: <b>${data.ref}</b></p>` +
+            `<p>Phone: ${bPhone || "—"}</p>` +
+            `<p>Email: ${bEmail || "—"}</p>` +
+            `<p>Branch: ${bBranch || "—"}</p>`;
+          const evRes = await fetch("/api/microsoft/event", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              subject,
+              start,
+              end,
+              location: bBranch || undefined,
+              bodyHtml,
+            }),
+          });
+          if (!evRes.ok) {
+            const evData = await evRes.json().catch(() => ({}));
+            calMsg = ` (Outlook: ${evData?.error || "failed"})`;
+          } else {
+            calMsg = " · added to Outlook";
+          }
+        } catch (err) {
+          calMsg = ` (Outlook: ${err instanceof Error ? err.message : "failed"})`;
+        }
+      }
+
+      setToast({ kind: "success", text: `Booking saved · Ref ${data.ref}${calMsg}` });
+      // Reset + close
+      setBFullName("");
+      setBPhone("");
+      setBEmail("");
+      setBBranch("");
+      setBDate("");
+      setBTime("10:00");
+      setBookingOpen(false);
+      await load();
+    } catch (err) {
+      setToast({ kind: "error", text: err instanceof Error ? err.message : "Booking failed" });
+    } finally {
+      setBookingBusy(false);
     }
   };
 
@@ -144,7 +289,10 @@ export default function DashboardPage() {
     const isUpdating = updatingRef === row.Ref;
     const status = (row.Status || "").trim();
     return (
-      <div className="rounded-xl border border-mist-200 bg-white p-4 shadow-sm">
+      <Link
+        href={`/new?ref=${encodeURIComponent(row.Ref)}`}
+        className="block cursor-pointer rounded-xl border border-mist-200 bg-white p-4 shadow-sm transition hover:border-navy-400 hover:shadow-soft"
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-navy-900">
@@ -196,6 +344,7 @@ export default function DashboardPage() {
               href={row["PDF URL"]}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="text-xs font-medium text-navy-700 underline-offset-2 hover:underline"
             >
               View PDF ↗
@@ -205,7 +354,9 @@ export default function DashboardPage() {
             <button
               type="button"
               disabled={isUpdating}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const date = window.prompt(
                   "Appointment date (DD/MM/YYYY)",
                   new Date().toLocaleDateString("en-GB"),
@@ -225,7 +376,9 @@ export default function DashboardPage() {
             <button
               type="button"
               disabled={isUpdating}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const date = window.prompt(
                   "Sent-to-With-Grace date (DD/MM/YYYY)",
                   new Date().toLocaleDateString("en-GB"),
@@ -245,7 +398,9 @@ export default function DashboardPage() {
             <button
               type="button"
               disabled={isUpdating}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (!window.confirm("Move this estimate back to Quoted?")) return;
                 updateStatus(row.Ref, {
                   status: STATUS_QUOTED,
@@ -259,7 +414,7 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
-      </div>
+      </Link>
     );
   };
 
@@ -302,8 +457,15 @@ export default function DashboardPage() {
             Every estimate, where it is in the process, and the link to its PDF.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link href="/new" className="btn-primary">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setBookingOpen((v) => !v)}
+          >
+            {bookingOpen ? "Close booking" : "+ Book appointment"}
+          </button>
+          <Link href="/new" className="btn-secondary">
             + New estimate
           </Link>
           <button
@@ -316,6 +478,120 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Microsoft Calendar status banner */}
+      {msStatus?.configured && !msStatus.connected && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold-200 bg-gold-50 p-4 text-sm text-gold-900 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Microsoft Calendar isn't connected yet — appointments won't appear in your Outlook automatically.
+          </p>
+          <a
+            href="/api/microsoft/auth"
+            className="rounded-md bg-navy-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-navy-700"
+          >
+            Connect Microsoft Calendar
+          </a>
+        </div>
+      )}
+      {msStatus?.connected && (
+        <p className="mb-4 text-xs text-mist-400">
+          Microsoft Calendar connected{msStatus.user ? ` as ${msStatus.user}` : ""}.
+          New bookings will appear in Outlook automatically.{" "}
+          <a href="/api/microsoft/auth" className="underline-offset-2 hover:underline">
+            Reconnect
+          </a>
+        </p>
+      )}
+
+      {/* Booking form (collapsible) */}
+      {bookingOpen && (
+        <div className="mb-5 rounded-xl bg-white p-5 shadow-soft">
+          <h2 className="heading-serif text-xl text-navy-900">Book a customer appointment</h2>
+          <p className="mt-1 text-sm text-mist-400">
+            For phone bookings — captures the customer details and the appointment time.
+            When they come in, click the card to open the wizard pre-filled with their info.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="field-label">Customer name *</label>
+              <input
+                className="field-input"
+                value={bFullName}
+                onChange={(e) => setBFullName(e.target.value)}
+                placeholder="Mr Robin Gibson"
+              />
+            </div>
+            <div>
+              <label className="field-label">Telephone</label>
+              <input
+                className="field-input"
+                value={bPhone}
+                onChange={(e) => setBPhone(e.target.value)}
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <label className="field-label">Email</label>
+              <input
+                className="field-input"
+                type="email"
+                value={bEmail}
+                onChange={(e) => setBEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="field-label">Branch</label>
+              <select
+                className="field-input"
+                value={bBranch}
+                onChange={(e) => setBBranch(e.target.value)}
+              >
+                <option value="">— choose —</option>
+                <option value="Woodstock Road">Woodstock Road</option>
+                <option value="Finaghy">Finaghy</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label">Date *</label>
+                <input
+                  className="field-input"
+                  type="date"
+                  value={bDate}
+                  onChange={(e) => setBDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Time</label>
+                <input
+                  className="field-input"
+                  type="time"
+                  value={bTime}
+                  onChange={(e) => setBTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setBookingOpen(false)}
+              disabled={bookingBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={submitBooking}
+              disabled={bookingBusy || !bFullName.trim() || !bDate}
+            >
+              {bookingBusy ? "Saving…" : "Save booking"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-5 flex flex-col gap-3 rounded-xl bg-white p-4 shadow-soft sm:flex-row sm:items-center">
         <input
@@ -366,6 +642,20 @@ export default function DashboardPage() {
             rows={cols.sent}
             accent="text-navy-900"
           />
+        </div>
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
+            toast.kind === "success"
+              ? "bg-navy-700 text-white"
+              : "bg-red-600 text-white"
+          }`}
+        >
+          {toast.text}
         </div>
       )}
     </div>

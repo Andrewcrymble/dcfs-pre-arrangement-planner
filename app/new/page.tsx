@@ -165,6 +165,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [source, setSource] = useState<"sheet" | "fallback">("sheet");
+  // When the wizard is opened with ?ref=DCFS-... we treat it as editing an
+  // existing record rather than creating a new one. Customer/person info is
+  // pre-filled from the Estimates sheet, and the same Ref is reused when the
+  // PDF/WhatsApp pipeline runs (Apps Script's upload action upserts on Ref).
+  const [editRef, setEditRef] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +183,47 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // If we land on /new?ref=DCFS-... pre-fill from the existing record.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (!ref) return;
+    setEditRef(ref);
+    fetch(`/api/estimates?ref=${encodeURIComponent(ref)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        const e = data?.estimate;
+        if (!e) return;
+        setForm((prev) => ({
+          ...prev,
+          customer: {
+            ...prev.customer,
+            fullName: e.Customer || prev.customer.fullName,
+            telephone: e.Phone || prev.customer.telephone,
+            email: e.Email || prev.customer.email,
+            branch:
+              e.Branch === "Woodstock Road" || e.Branch === "Finaghy"
+                ? e.Branch
+                : prev.customer.branch,
+            arrangementFor:
+              e.Person && e.Person.trim() !== ""
+                ? "Someone else"
+                : prev.customer.arrangementFor,
+          },
+          person: e.Person
+            ? {
+                ...prev.person,
+                fullName: e.Person,
+                relationship: e.Relationship || "",
+              }
+            : prev.person,
+        }));
+      })
+      .catch(() => {
+        // Ignore — wizard still works with empty form.
+      });
   }, []);
 
   const lines = useMemo(() => buildSelectedLines(form, pricing), [form, pricing]);
@@ -401,7 +447,7 @@ export default function Home() {
         {stepKey === "customer" ? (
           <StepNav onNext={goNext} nextDisabled={!customerValid} hideBack />
         ) : stepKey === "summary" ? (
-          <SummaryActions form={form} lines={lines} onBack={goBack} />
+          <SummaryActions form={form} lines={lines} onBack={goBack} editRef={editRef} />
         ) : (
           <StepNav onBack={goBack} onNext={goNext} />
         )}
@@ -1313,12 +1359,15 @@ function SummaryActions({
   form,
   lines,
   onBack,
+  editRef,
 }: {
   form: FormState;
   lines: ReturnType<typeof buildSelectedLines>;
   onBack: () => void;
+  editRef: string | null;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const [arrangerName, setArrangerName] = useState<string>("");
   const [toast, setToast] = useState<{
     kind: "success" | "error";
     text: string;
@@ -1332,11 +1381,29 @@ function SummaryActions({
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Fetch the signed-in user's name once so we can put "Yours sincerely,
+  // <name>" on the cover letter. Falls back to the firm name on failure.
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.name) setArrangerName(d.name);
+      })
+      .catch(() => {
+        // Fine — generateEstimatePdf falls back to "David Crymble & Sons".
+      });
+  }, []);
+
   const handleDownload = async () => {
     if (downloading) return;
     setDownloading(true);
     try {
-      const result = await generateEstimatePdf(form, lines);
+      const result = await generateEstimatePdf(
+        form,
+        lines,
+        editRef || undefined,
+        { arrangerName },
+      );
       setToast({
         kind: "success",
         text: `PDF downloaded · Ref ${result.estimateId}`,
@@ -1362,9 +1429,12 @@ function SummaryActions({
     setDownloading(true);
     let pdfResult: { bytes: Uint8Array; filename: string; estimateId: string };
     try {
-      pdfResult = await generateEstimatePdf(form, lines, undefined, {
-        skipDownload: true,
-      });
+      pdfResult = await generateEstimatePdf(
+        form,
+        lines,
+        editRef || undefined,
+        { skipDownload: true, arrangerName },
+      );
     } catch (err) {
       console.error("PDF generation failed:", err);
       setToast({ kind: "error", text: "Couldn't generate PDF — please try again." });

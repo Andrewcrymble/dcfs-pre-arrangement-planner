@@ -42,7 +42,13 @@ async function callAppsScript(
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const ref = new URL(req.url).searchParams.get("ref");
+  if (ref) {
+    const { data, error, status } = await callAppsScript("get_estimate", { ref });
+    if (error) return NextResponse.json({ error }, { status });
+    return NextResponse.json(data ?? { estimate: null });
+  }
   const { data, error, status } = await callAppsScript("list_estimates");
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { estimates: [] });
