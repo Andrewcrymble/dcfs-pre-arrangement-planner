@@ -9,9 +9,11 @@ import {
   generateEstimateId,
 } from "./estimate";
 
-const NAVY: [number, number, number] = [86, 147, 32];
-const GOLD: [number, number, number] = [47, 190, 212];
-const SLATE: [number, number, number] = [90, 100, 80];
+// PDF uses muted black/grey palette (more formal than the on-screen green
+// theme — the customer-facing document should read as understated).
+const NAVY: [number, number, number] = [40, 40, 40];   // charcoal — headings & table heads
+const GOLD: [number, number, number] = [150, 150, 150]; // medium grey — accent rules
+const SLATE: [number, number, number] = [110, 110, 110]; // muted grey — secondary text
 
 function formatPdfTimestamp(iso: string): string {
   try {
@@ -45,7 +47,10 @@ const CATEGORY_LABEL: Record<SelectedLine["category"], string> = {
 // Vertical safe zone inside the letterhead — content sits between these.
 // Logo block ends ~y=170, contact band starts ~y=720 on A4 (842pt tall).
 const LETTERHEAD_TOP_SAFE = 180;
-const LETTERHEAD_BOTTOM_SAFE = 700;
+// Bumped up from 700: the letterhead's contact-info band starts higher
+// than originally assumed — content below ~660 was overlapping with the
+// "139 Upper Lisburn Road…" line on long estimates.
+const LETTERHEAD_BOTTOM_SAFE = 660;
 
 let cachedLetterhead: HTMLImageElement | null = null;
 
@@ -181,6 +186,11 @@ export async function generateEstimatePdf(
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
 
+    if (y > LETTERHEAD_BOTTOM_SAFE - 30) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...NAVY);
     doc.setFontSize(11);
@@ -211,6 +221,13 @@ export async function generateEstimatePdf(
     });
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
+
+    // Need room for the italic note + the bold subtotal line. If we're
+    // too close to the bottom safe zone, push to a fresh page first.
+    if (y > LETTERHEAD_BOTTOM_SAFE - 50) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
 
     doc.setFont("helvetica", "italic");
     doc.setFontSize(9);
@@ -334,6 +351,127 @@ export async function generateEstimatePdf(
   doc.setFontSize(9);
   doc.setTextColor(...SLATE);
   doc.text(disclaimerLines, margin, y);
+  y += disclaimerLines.length * 12 + 18;
+
+  // ---- Closing boilerplate: optional third-party costs + Plan with Grace
+  // partnership statement. Office requirement — must appear on every estimate.
+  if (y > LETTERHEAD_BOTTOM_SAFE - 90) {
+    addPage();
+    y = LETTERHEAD_TOP_SAFE;
+  }
+
+  // Note heading
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...NAVY);
+  doc.text("Note", margin, y);
+  y += 6;
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, margin + contentWidth, y);
+  y += 14;
+
+  const noteIntro =
+    "Third-party costs (what we pay on your behalf) can go up and down depending on personal need. Here are some third-party costs not included in the quote but can be added if required.";
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(40, 40, 40);
+  const noteIntroLines = doc.splitTextToSize(noteIntro, contentWidth);
+  if (y + noteIntroLines.length * 12 > LETTERHEAD_BOTTOM_SAFE) {
+    addPage();
+    y = LETTERHEAD_TOP_SAFE;
+  }
+  doc.text(noteIntroLines, margin, y);
+  y += noteIntroLines.length * 12 + 10;
+
+  const optionalCosts: [string, string][] = [
+    ["Flowers", "From £80 upwards"],
+    ["Paper / online Funeral Notice", "From £14.40 to £100 approx."],
+    ["Officiant Fee", "From £60 – £200"],
+    ["Organist", "From £60 upwards"],
+    ["Caretaker", "From £40 upwards"],
+    ["Limousine", "From £286 upwards"],
+    ["Order of Service", "£40 per 50 copies"],
+  ];
+  for (const [label, value] of optionalCosts) {
+    if (y + 14 > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.text(label, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, margin + 240, y);
+    y += 14;
+  }
+  y += 10;
+
+  // Why Choose section
+  if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
+    addPage();
+    y = LETTERHEAD_TOP_SAFE;
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...NAVY);
+  doc.text('Why Choose "Plan with Grace"?', margin, y);
+  y += 6;
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, margin + contentWidth, y);
+  y += 16;
+
+  const benefits: [string, string][] = [
+    ["Complete Transparency", "Clear and honest details on all inclusions and exclusions."],
+    ["Financial Protection", "Plan protection under the FSCS, covering values up to £85,000."],
+    ["24/7 Access", "Online access to your plan anytime, day or night."],
+    ["Dedicated Funeral Planner", "Personalised support to guide you through every step."],
+    ["No Instalment Fees", "No fees on the first 24 monthly instalments."],
+    [
+      "FCA Regulated",
+      "Your plan is safeguarded by the Financial Conduct Authority, ensuring the highest standards of financial security and customer protection.",
+    ],
+  ];
+  doc.setFontSize(10);
+  for (const [label, body] of benefits) {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(40, 40, 40);
+    const labelText = `• ${label}: `;
+    const labelW = doc.getTextWidth(labelText);
+    const bodyLines = doc.splitTextToSize(body, contentWidth - labelW);
+    const blockHeight = bodyLines.length * 12 + 4;
+    if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.text(labelText, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(bodyLines[0], margin + labelW, y);
+    for (let i = 1; i < bodyLines.length; i++) {
+      y += 12;
+      doc.text(bodyLines[i], margin + labelW, y);
+    }
+    y += 14;
+  }
+  y += 6;
+
+  const closingParas = [
+    'By choosing "Plan with Grace," you’re assured peace of mind and the warmth of a partnership with David Crymble & Sons, a trusted family funeral directors. This collaboration combines the reliability of an FCA-regulated plan with the compassionate, personal care of a family-owned business, ensuring your wishes are honoured with clarity, security, and dedicated support.',
+    "If you would like to proceed with the plan, please contact us, and we will guide you through the next steps.",
+  ];
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(40, 40, 40);
+  for (const para of closingParas) {
+    const paraLines = doc.splitTextToSize(para, contentWidth);
+    const blockHeight = paraLines.length * 12 + 10;
+    if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.text(paraLines, margin, y);
+    y += blockHeight;
+  }
 
   const safeName = (form.customer.fullName || "estimate")
     .replace(/[^a-z0-9]+/gi, "_")
