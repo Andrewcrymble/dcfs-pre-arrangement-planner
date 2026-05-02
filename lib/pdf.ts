@@ -147,7 +147,7 @@ export async function generateEstimatePdf(
   doc.setFontSize(11);
   doc.setTextColor(40, 40, 40);
   doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, y);
-  y += 22;
+  y += 28;
 
   // Opening line — names the person being arranged for when applicable
   // so the customer immediately sees who the estimate is for.
@@ -156,11 +156,31 @@ export async function generateEstimatePdf(
       ? ` for ${form.person.fullName.trim()}`
       : "";
   const openingLines = doc.splitTextToSize(
-    `Please find below a funeral plan estimate as discussed${personFor}.`,
+    `Please find attached funeral plan estimate as discussed${personFor}.`,
     contentWidth,
   );
   doc.text(openingLines, margin, y);
-  y += openingLines.length * 14 + 14;
+  y += openingLines.length * 16 + 18;
+
+  // Closing courtesy line
+  doc.text(
+    "If we can be of any further assistance, please do not hesitate to contact us.",
+    margin,
+    y,
+  );
+  y += 32;
+
+  // Sign-off
+  doc.text("Yours sincerely,", margin, y);
+  y += 56; // signature gap
+  doc.setFont("helvetica", "bold");
+  doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
+
+  // ============================================================
+  // ---- Page 2 onwards: itemised estimate
+  // ============================================================
+  addPage();
+  y = LETTERHEAD_TOP_SAFE;
 
   // ---- Person being arranged for (only when "Someone else" + name supplied)
   if (form.customer.arrangementFor === "Someone else" && form.person.fullName.trim() !== "") {
@@ -496,27 +516,6 @@ export async function generateEstimatePdf(
   // Funeral arranger notes are intentionally NOT rendered on the PDF — they
   // are an internal staff log, not for the customer-facing estimate. They
   // remain visible in the on-screen Summary and in the mailto body.
-
-  // ---- Sign-off (signature block before disclaimer/boilerplate)
-  if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
-    addPage();
-    y = LETTERHEAD_TOP_SAFE;
-  }
-  y += 12;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
-  doc.text(
-    "If we can be of any further assistance, please do not hesitate to contact us.",
-    margin,
-    y,
-  );
-  y += 28;
-  doc.text("Yours sincerely,", margin, y);
-  y += 44; // signature gap
-  doc.setFont("helvetica", "bold");
-  doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
-  y += 24;
 
   // ---- Disclaimer (sits inside the letterhead's safe zone — no custom footer
   // needed because the letterhead has its own bottom band with contact details
