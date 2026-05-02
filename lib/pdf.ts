@@ -256,18 +256,20 @@ export async function generateEstimatePdf(form: FormState, lines: SelectedLine[]
 
   // ---- Wishes & important information
   const w = form.wishes;
-  const wishPairs: Array<[string, string]> = [
-    ["Date of birth", w.dateOfBirth],
-    ["Doctor / GP", w.doctorName],
-    ["Next of kin", [w.nextOfKinName, w.nextOfKinPhone].filter(Boolean).join(" · ")],
-    ["Minister / officiant", w.officiant],
-    ["Hymns & music", w.music],
-    ["Readings", w.readings],
-    ["Flowers / donations", w.flowers],
-    ["Dress code", w.dressCode],
-    ["Catering / wake", w.catering],
-    ["Anything else", w.other],
-  ].filter(([, v]) => v && v.trim() !== "");
+  const wishPairs: Array<[string, string]> = (
+    [
+      ["Date of birth", w.dateOfBirth],
+      ["Doctor / GP", w.doctorName],
+      ["Next of kin", [w.nextOfKinName, w.nextOfKinPhone].filter(Boolean).join(" · ")],
+      ["Minister / officiant", w.officiant],
+      ["Hymns & music", w.music],
+      ["Readings", w.readings],
+      ["Flowers / donations", w.flowers],
+      ["Dress code", w.dressCode],
+      ["Catering / wake", w.catering],
+      ["Anything else", w.other],
+    ] as Array<[string, string]>
+  ).filter(([, v]) => v && v.trim() !== "");
 
   if (wishPairs.length > 0) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 60) {
