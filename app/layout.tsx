@@ -56,6 +56,12 @@ export default async function RootLayout({
                       New estimate
                     </a>
                     <a
+                      href="/calculator"
+                      className="underline-offset-2 hover:text-white hover:underline"
+                    >
+                      Calculator
+                    </a>
+                    <a
                       href="/change-password"
                       className="underline-offset-2 hover:text-white hover:underline"
                     >

@@ -407,6 +407,69 @@ export async function generateEstimatePdf(
   doc.text(formatGBP(totals.grandTotal), pageWidth - margin - 14, y + 24, { align: "right" });
   y += 60;
 
+  // ---- Monthly instalment options (1–5 years, simple division)
+  if (totals.grandTotal > 0) {
+    if (y > LETTERHEAD_BOTTOM_SAFE - 140) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text("Monthly plan options", margin, y);
+    y += 6;
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 14;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    doc.text(
+      "If you'd prefer to spread the cost, here is the monthly equivalent over each available term.",
+      margin,
+      y,
+    );
+    y += 18;
+
+    const yearOptions: Array<[number, string]> = [
+      [12, "1 year"],
+      [24, "2 years"],
+      [36, "3 years"],
+      [48, "4 years"],
+      [60, "5 years"],
+    ];
+    for (const [months, label] of yearOptions) {
+      const monthly = totals.grandTotal / months;
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...NAVY);
+      doc.text(`${label}`, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(40, 40, 40);
+      doc.text(`(${months} monthly instalments)`, margin + 70, y);
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        `${formatGBP(monthly)} / month`,
+        pageWidth - margin,
+        y,
+        { align: "right" },
+      );
+      y += 14;
+    }
+
+    y += 4;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(...SLATE);
+    const noteLines = doc.splitTextToSize(
+      "Figures are interest-free for the first 24 months. Plans extending beyond 24 months may incur a finance charge — your final monthly amount will be confirmed at sign-up.",
+      contentWidth,
+    );
+    doc.text(noteLines, margin, y);
+    y += noteLines.length * 10 + 14;
+  }
+
   // ---- Wishes & important information
   const w = form.wishes;
   const wishPairs: Array<[string, string]> = (
