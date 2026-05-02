@@ -72,6 +72,20 @@ const EMPTY_FORM: FormState = {
   arrangerNotes: [],
 };
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  // Chunked conversion to avoid stack-overflow on String.fromCharCode(...bytes)
+  // for any non-trivial PDF size.
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + CHUNK)),
+    );
+  }
+  return btoa(binary);
+}
+
 function formatNoteTimestamp(iso: string): string {
   try {
     const d = new Date(iso);
@@ -1179,7 +1193,8 @@ function SummaryActions({
     if (downloading) return;
     setDownloading(true);
     try {
-      await generateEstimatePdf(form, lines);
+      const result = await generateEstimatePdf(form, lines);
+      alert(`PDF downloaded.\n\nReference: ${result.estimateId}`);
     } catch (err) {
       alert(
         "Sorry — we couldn't generate your PDF. Please try again or contact us directly.",
@@ -1192,12 +1207,15 @@ function SummaryActions({
 
   const handleWhatsApp = async () => {
     if (downloading) return;
-    // Generate the PDF so it's downloaded for staff to forward into the
-    // WhatsApp chat manually (Beepmate's /send endpoint is text-only).
-    // The text summary below is what posts to the Crymble & Sons group.
+    // Pipeline: generate PDF (downloads locally + we get bytes back) → upload
+    // bytes to Drive via /api/upload-pdf → WhatsApp message containing the
+    // Drive link goes to Crymble & Sons group via /api/beepmate. Each step
+    // degrades gracefully — if Drive isn't configured, we still send the
+    // text summary; if WhatsApp fails, the PDF is still on disk.
     setDownloading(true);
+    let pdfResult: { bytes: Uint8Array; filename: string; estimateId: string };
     try {
-      await generateEstimatePdf(form, lines);
+      pdfResult = await generateEstimatePdf(form, lines);
     } catch (err) {
       alert(
         "Sorry — we couldn't generate your PDF. Please try again or contact us directly.",
@@ -1207,9 +1225,32 @@ function SummaryActions({
       return;
     }
 
+    // Try to upload the PDF to Drive and get a shareable link. Failures here
+    // are non-fatal — we still send the WhatsApp summary.
+    let driveUrl: string | null = null;
+    let driveError: string | null = null;
+    try {
+      const pdfBase64 = uint8ArrayToBase64(pdfResult.bytes);
+      const resp = await fetch("/api/upload-pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pdfBase64, filename: pdfResult.filename }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data?.url) {
+        driveUrl = data.url as string;
+      } else if (resp.status !== 503) {
+        // 503 = Drive not configured yet — that's fine, just skip silently.
+        driveError = data?.error || `upload returned ${resp.status}`;
+      }
+    } catch (err) {
+      driveError = err instanceof Error ? err.message : "upload failed";
+    }
+
     const totals = totalsForLines(lines);
     const messageLines = [
       `📋 NEW ESTIMATE — ${form.customer.fullName || "(no name)"}`,
+      `Ref: ${pdfResult.estimateId}`,
       "",
       `Phone: ${form.customer.telephone || "—"}`,
       `Email: ${form.customer.email || "—"}`,
@@ -1220,6 +1261,7 @@ function SummaryActions({
       ...lines.map((l) => `• ${l.item_name} — ${formatGBP(l.price)}`),
       "",
       `Total: ${formatGBP(totals.grandTotal)}`,
+      ...(driveUrl ? ["", `📎 PDF: ${driveUrl}`] : []),
     ];
     const message = messageLines.join("\n");
 
@@ -1233,8 +1275,13 @@ function SummaryActions({
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
+      const driveNote = driveUrl
+        ? "PDF link included in the message."
+        : driveError
+          ? `(PDF not uploaded to Drive: ${driveError})`
+          : "(PDF download is on your computer.)";
       alert(
-        "Sent to Crymble & Sons WhatsApp.\n\nThe PDF has also been downloaded — forward it into the chat if you want the customer to see the full document.",
+        `Sent to Crymble & Sons WhatsApp.\n\nReference: ${pdfResult.estimateId}\n\n${driveNote}`,
       );
     } catch (err) {
       console.error(err);

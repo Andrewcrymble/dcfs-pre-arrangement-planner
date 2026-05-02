@@ -6,6 +6,29 @@ export function isDirectFuneralType(name: string): boolean {
   return (DIRECT_FUNERAL_TYPES as readonly string[]).includes(name);
 }
 
+// Internal reference for an estimate. Format: DCFS-YYMMDD-XXXX.
+// Date-sortable so we can find recent ones at a glance; the 4-hex-char
+// suffix is enough to avoid collisions for the volume the office sees.
+// Used in the PDF, the WhatsApp message, and the Drive filename so a
+// reference quoted by a customer maps back to a single document.
+export function generateEstimateId(): string {
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const bytes = new Uint8Array(2);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    bytes[0] = Math.floor(Math.random() * 256);
+    bytes[1] = Math.floor(Math.random() * 256);
+  }
+  const suffix = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+    .join("");
+  return `DCFS-${yy}${mm}${dd}-${suffix}`;
+}
+
 // These disbursement items are already covered inside the direct cremation /
 // direct burial price, so they should be hidden on the disbursements step and
 // stripped from any selections to avoid double-charging.

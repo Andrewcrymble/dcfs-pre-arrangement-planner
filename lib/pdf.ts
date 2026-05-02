@@ -2,7 +2,12 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { FormState, SelectedLine } from "./types";
 import { formatGBP } from "./sheets";
-import { PDF_DISCLAIMER, totalsForLines, isDirectFuneralType } from "./estimate";
+import {
+  PDF_DISCLAIMER,
+  totalsForLines,
+  isDirectFuneralType,
+  generateEstimateId,
+} from "./estimate";
 
 const NAVY: [number, number, number] = [86, 147, 32];
 const GOLD: [number, number, number] = [47, 190, 212];
@@ -68,7 +73,11 @@ function drawLetterhead(
   doc.addImage(img, "PNG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
 }
 
-export async function generateEstimatePdf(form: FormState, lines: SelectedLine[]) {
+export async function generateEstimatePdf(
+  form: FormState,
+  lines: SelectedLine[],
+  estimateId: string = generateEstimateId(),
+): Promise<{ bytes: Uint8Array; filename: string; estimateId: string }> {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -99,9 +108,10 @@ export async function generateEstimatePdf(form: FormState, lines: SelectedLine[]
     month: "long",
     year: "numeric",
   });
-  doc.text(`Generated: ${dateStr}`, pageWidth - margin, y, { align: "right" });
+  doc.text(`Ref: ${estimateId}`, pageWidth - margin, y, { align: "right" });
+  doc.text(`Generated: ${dateStr}`, pageWidth - margin, y + 12, { align: "right" });
 
-  y += 14;
+  y += 26;
   doc.setDrawColor(...GOLD);
   doc.setLineWidth(1);
   doc.line(margin, y, margin + contentWidth, y);
@@ -328,5 +338,11 @@ export async function generateEstimatePdf(form: FormState, lines: SelectedLine[]
   const safeName = (form.customer.fullName || "estimate")
     .replace(/[^a-z0-9]+/gi, "_")
     .toLowerCase();
-  doc.save(`dcfs-estimate-${safeName}.pdf`);
+  const filename = `${estimateId}-${safeName}.pdf`;
+  doc.save(filename);
+  return {
+    bytes: new Uint8Array(doc.output("arraybuffer")),
+    filename,
+    estimateId,
+  };
 }
