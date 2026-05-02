@@ -101,142 +101,66 @@ export async function generateEstimatePdf(
   };
 
   // ============================================================
-  // ---- Page 1: Cover letter
+  // ---- Single continuous flow: opening letter directly into estimate
   // ============================================================
-  {
-    let y = LETTERHEAD_TOP_SAFE + 10;
+  let y = LETTERHEAD_TOP_SAFE + 10;
 
-    // Recipient address block (top-left). Customer name first, then their
-    // address split on newlines / commas — whatever they typed.
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(40, 40, 40);
-    if (form.customer.fullName) {
-      doc.text(form.customer.fullName, margin, y);
-      y += 14;
-    }
-    if (form.customer.address) {
-      const addrLines = form.customer.address
-        .split(/[\n,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const line of addrLines) {
-        const wrapped = doc.splitTextToSize(line, contentWidth - 220);
-        doc.text(wrapped, margin, y);
-        y += 14 * Math.max(1, wrapped.length);
-      }
-    }
-
-    // Reference + date (right column, aligned to the right margin)
-    doc.setFontSize(10);
-    doc.setTextColor(...SLATE);
-    const dateStr = new Date().toLocaleDateString("en-GB", {
-      weekday: "long",
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-    doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {
-      align: "right",
-    });
-    doc.text(dateStr, pageWidth - margin, LETTERHEAD_TOP_SAFE + 24, {
-      align: "right",
-    });
-
-    // Salutation
-    y = Math.max(y, LETTERHEAD_TOP_SAFE + 100);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(40, 40, 40);
-    const salutationName = form.customer.fullName
-      ? form.customer.fullName.split(/\s+/).slice(-1)[0]
-      : "Sir / Madam";
-    doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, y);
-    y += 30;
-
-    // Body
-    const bodyParas = [
-      "Please find attached funeral plan estimate as discussed.",
-      "If we can be any further assistance, please do not hesitate to contact us.",
-    ];
-    for (const para of bodyParas) {
-      const wrapped = doc.splitTextToSize(para, contentWidth);
+  // Address block (top-left). Name then multi-line address.
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+  if (form.customer.fullName) {
+    doc.text(form.customer.fullName, margin, y);
+    y += 14;
+  }
+  if (form.customer.address) {
+    const addrLines = form.customer.address
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const line of addrLines) {
+      const wrapped = doc.splitTextToSize(line, contentWidth - 220);
       doc.text(wrapped, margin, y);
-      y += wrapped.length * 14 + 14;
+      y += 14 * Math.max(1, wrapped.length);
     }
-
-    // Sign-off
-    y += 10;
-    doc.text("Yours sincerely,", margin, y);
-    y += 60; // space for a signature
-    doc.setFont("helvetica", "bold");
-    doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
-
-    // Avoid an unused-variable lint warning — salutationName is intentionally
-    // computed for future use (Mr/Mrs surname-only mode) and kept here.
-    void salutationName;
   }
 
-  // ============================================================
-  // ---- Page 2 onwards: the estimate itself
-  // ============================================================
-  addPage();
-
-  // ---- Title
-  let y = LETTERHEAD_TOP_SAFE;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(...NAVY);
-  doc.text("Pre-Arranged Funeral Estimate", margin, y);
-
-  doc.setFont("helvetica", "normal");
+  // Reference + date (top-right column)
   doc.setFontSize(10);
   doc.setTextColor(...SLATE);
   const dateStr = new Date().toLocaleDateString("en-GB", {
+    weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
   });
-  doc.text(`Ref: ${estimateId}`, pageWidth - margin, y, { align: "right" });
-  doc.text(`Generated: ${dateStr}`, pageWidth - margin, y + 12, { align: "right" });
+  doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {
+    align: "right",
+  });
+  doc.text(dateStr, pageWidth - margin, LETTERHEAD_TOP_SAFE + 24, {
+    align: "right",
+  });
 
-  y += 26;
-  doc.setDrawColor(...GOLD);
-  doc.setLineWidth(1);
-  doc.line(margin, y, margin + contentWidth, y);
-
-  // ---- Customer details
-  y += 24;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...NAVY);
-  doc.text("Customer details", margin, y);
-
+  // Salutation
+  y = Math.max(y + 18, LETTERHEAD_TOP_SAFE + 90);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
   doc.setTextColor(40, 40, 40);
-  y += 16;
+  doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, y);
+  y += 22;
 
-  const detailLines: [string, string][] = [
-    ["Name", form.customer.fullName || "—"],
-    ["Telephone", form.customer.telephone || "—"],
-    ["Email", form.customer.email || "—"],
-    ["Address", form.customer.address || "—"],
-    ["Preferred branch", form.customer.branch || "—"],
-    ["Arrangement for", form.customer.arrangementFor || "—"],
-  ];
-  for (const [label, value] of detailLines) {
-    const wrapped = doc.splitTextToSize(value, contentWidth - 110);
-    const blockHeight = 14 * Math.max(1, wrapped.length);
-    if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
-      addPage();
-      y = LETTERHEAD_TOP_SAFE;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.text(`${label}:`, margin, y);
-    doc.setFont("helvetica", "normal");
-    doc.text(wrapped, margin + 110, y);
-    y += blockHeight;
-  }
+  // Opening line — names the person being arranged for when applicable
+  // so the customer immediately sees who the estimate is for.
+  const personFor =
+    form.customer.arrangementFor === "Someone else" && form.person.fullName.trim() !== ""
+      ? ` for ${form.person.fullName.trim()}`
+      : "";
+  const openingLines = doc.splitTextToSize(
+    `Please find below a funeral plan estimate as discussed${personFor}.`,
+    contentWidth,
+  );
+  doc.text(openingLines, margin, y);
+  y += openingLines.length * 14 + 14;
 
   // ---- Person being arranged for (only when "Someone else" + name supplied)
   if (form.customer.arrangementFor === "Someone else" && form.person.fullName.trim() !== "") {
@@ -300,8 +224,18 @@ export async function generateEstimatePdf(
 
   const totals = totalsForLines(lines);
 
-  y += 10;
+  y += 4;
   if (funeralRows.length > 0) {
+    if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text("Professional Services", margin, y);
+    y += 8;
+
     autoTable(doc, {
       startY: y,
       head: [["Category", "Item", "Estimated cost"]],
@@ -340,7 +274,7 @@ export async function generateEstimatePdf(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...NAVY);
-    doc.text("Estimated third-party costs (disbursements)", margin, y + 4);
+    doc.text("Estimated Third-party Costs", margin, y + 4);
     y += 12;
 
     autoTable(doc, {
@@ -562,6 +496,27 @@ export async function generateEstimatePdf(
   // Funeral arranger notes are intentionally NOT rendered on the PDF — they
   // are an internal staff log, not for the customer-facing estimate. They
   // remain visible in the on-screen Summary and in the mailto body.
+
+  // ---- Sign-off (signature block before disclaimer/boilerplate)
+  if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
+    addPage();
+    y = LETTERHEAD_TOP_SAFE;
+  }
+  y += 12;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+  doc.text(
+    "If we can be of any further assistance, please do not hesitate to contact us.",
+    margin,
+    y,
+  );
+  y += 28;
+  doc.text("Yours sincerely,", margin, y);
+  y += 44; // signature gap
+  doc.setFont("helvetica", "bold");
+  doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
+  y += 24;
 
   // ---- Disclaimer (sits inside the letterhead's safe zone — no custom footer
   // needed because the letterhead has its own bottom band with contact details
