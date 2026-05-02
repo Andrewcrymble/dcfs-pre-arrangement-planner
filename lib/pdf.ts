@@ -303,6 +303,14 @@ export async function generateEstimatePdf(
     y = LETTERHEAD_TOP_SAFE;
   }
 
+  // Short intro line at the top of the prices page so the table
+  // doesn't sit cold against the letterhead.
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+  doc.text("Please find below a breakdown of plan charges.", margin, y);
+  y += 22;
+
   // ---- Itemised table
   const funeralRows = lines
     .filter((l) => l.category !== "disbursement")
