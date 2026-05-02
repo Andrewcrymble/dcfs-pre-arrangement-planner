@@ -225,6 +225,64 @@ export async function generateEstimatePdf(
     }
   }
 
+  // ---- Wishes & important information (shares page 2 with Person details)
+  {
+    const w = form.wishes;
+    const wishPairs: Array<[string, string]> = (
+      [
+        ["Minister / officiant", w.officiant],
+        ["Hymns & music", w.music],
+        ["Readings", w.readings],
+        ["Flowers / donations", w.flowers],
+        ["Dress code", w.dressCode],
+        ["Catering / wake", w.catering],
+        ["Anything else", w.other],
+      ] as Array<[string, string]>
+    ).filter(([, v]) => v && v.trim() !== "");
+
+    if (wishPairs.length > 0) {
+      y += 18;
+      if (y > LETTERHEAD_BOTTOM_SAFE - 60) {
+        addPage();
+        y = LETTERHEAD_TOP_SAFE;
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...NAVY);
+      doc.text("Wishes & important information", margin, y);
+      y += 6;
+      doc.setDrawColor(...GOLD);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, margin + contentWidth, y);
+      y += 12;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      for (const [label, value] of wishPairs) {
+        const wrapped = doc.splitTextToSize(value, contentWidth - 140);
+        const blockHeight = 14 * Math.max(1, wrapped.length);
+        if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+          addPage();
+          y = LETTERHEAD_TOP_SAFE;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...NAVY);
+        doc.text(`${label}:`, margin, y);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(40, 40, 40);
+        doc.text(wrapped, margin + 140, y);
+        y += blockHeight + 2;
+      }
+    }
+  }
+
+  // ============================================================
+  // ---- Page 3 onwards: prices and information
+  // ============================================================
+  addPage();
+  y = LETTERHEAD_TOP_SAFE;
+
   // ---- Itemised table
   const funeralRows = lines
     .filter((l) => l.category !== "disbursement")
@@ -244,7 +302,6 @@ export async function generateEstimatePdf(
 
   const totals = totalsForLines(lines);
 
-  y += 4;
   if (funeralRows.length > 0) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
       addPage();
@@ -463,55 +520,7 @@ export async function generateEstimatePdf(
     y += noteLines.length * 10 + 14;
   }
 
-  // ---- Wishes & important information
-  const w = form.wishes;
-  const wishPairs: Array<[string, string]> = (
-    [
-      ["Minister / officiant", w.officiant],
-      ["Hymns & music", w.music],
-      ["Readings", w.readings],
-      ["Flowers / donations", w.flowers],
-      ["Dress code", w.dressCode],
-      ["Catering / wake", w.catering],
-      ["Anything else", w.other],
-    ] as Array<[string, string]>
-  ).filter(([, v]) => v && v.trim() !== "");
-
-  if (wishPairs.length > 0) {
-    if (y > LETTERHEAD_BOTTOM_SAFE - 60) {
-      addPage();
-      y = LETTERHEAD_TOP_SAFE;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...NAVY);
-    doc.text("Wishes & important information", margin, y);
-    y += 6;
-    doc.setDrawColor(...GOLD);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, margin + contentWidth, y);
-    y += 12;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(40, 40, 40);
-    for (const [label, value] of wishPairs) {
-      const wrapped = doc.splitTextToSize(value, contentWidth - 140);
-      const blockHeight = 14 * Math.max(1, wrapped.length);
-      if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
-        addPage();
-        y = LETTERHEAD_TOP_SAFE;
-      }
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...NAVY);
-      doc.text(`${label}:`, margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(40, 40, 40);
-      doc.text(wrapped, margin + 140, y);
-      y += blockHeight + 2;
-    }
-    y += 6;
-  }
+  // Wishes are now rendered up on page 2 with the Person details block.
 
   // Funeral arranger notes are intentionally NOT rendered on the PDF — they
   // are an internal staff log, not for the customer-facing estimate. They
