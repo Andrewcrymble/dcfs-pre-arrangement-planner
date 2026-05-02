@@ -1,0 +1,40 @@
+category,item_name,description,price,active,sort_order
+funeral_type,Attended Burial,Traditional service followed by burial,2750,TRUE,1
+funeral_type,Attended Cremation,Traditional service followed by cremation,2650,TRUE,2
+funeral_type,Unattended Cremation,Direct cremation with no formal service,1450,TRUE,3
+funeral_type,Unattended Burial,Direct burial with no formal service,1750,TRUE,4
+funeral_type,Other / unsure,We will discuss the options with you,0,TRUE,5
+discount,Direct funeral package,Pre-paid simple package — basic coffin only no viewing or service,-500,TRUE,1
+admin_fee,'With Grace' plan administration fee,Standard administration fee applied to every pre-arranged plan,375,TRUE,1
+service_choice,Church service,Service held at your chosen church,0,TRUE,1
+service_choice,Funeral home service,Service held at our chapel of rest,0,TRUE,2
+service_choice,Graveside service,Short committal service at the graveside,0,TRUE,3
+service_choice,Crematorium service only,Service held at the crematorium,0,TRUE,4
+service_choice,No service,No formal service,0,TRUE,5
+service_choice,Unsure,Decide at a later date,0,TRUE,6
+coffin,Standard veneered oak,Classic veneered oak coffin with brass-effect fittings,495,TRUE,1
+coffin,Solid oak,Solid oak coffin with traditional fittings,895,TRUE,2
+coffin,Solid mahogany,Premium solid mahogany,1095,TRUE,3
+coffin,Willow (woven),Woven willow coffin — natural finish,795,TRUE,4
+coffin,Wicker / seagrass,Hand-woven seagrass — eco-friendly,725,TRUE,5
+coffin,Cardboard,Simple cardboard coffin,195,TRUE,6
+transport,Hearse only,Single hearse to and from the service — included as standard,0,TRUE,1
+transport,Hearse + 1 limousine,Hearse plus one family limousine (up to 6 passengers),225,TRUE,2
+transport,Hearse + 2 limousines,Hearse plus two family limousines,425,TRUE,3
+transport,Additional limousine,Each additional limousine,200,TRUE,4
+transport,Horse-drawn hearse,Pair of horses with traditional carriage,995,TRUE,5
+transport,Other,Bespoke transport — discuss with our team,0,TRUE,6
+additional_service,Embalming,Hygienic preparation of the deceased — included at no extra charge,0,TRUE,1
+additional_service,Order of service,Printed order of service booklets (50 copies),120,TRUE,2
+additional_service,Flowers,Family floral tribute,150,TRUE,3
+additional_service,Newspaper notice,Notice in local newspaper,95,TRUE,4
+additional_service,Livestream / recording,Live broadcast and recording of the service,150,TRUE,5
+additional_service,Memorial consultation,Headstone and memorial guidance,0,TRUE,6
+additional_service,Repatriation advice,Guidance on bringing a loved one home or abroad,0,TRUE,7
+additional_service,Other,Bespoke request — discuss with our team,0,TRUE,8
+disbursement,Crematorium fee,Fee paid to the crematorium,985,TRUE,1
+disbursement,Burial fee,Cemetery purchase / re-opening fee,1250,TRUE,2
+disbursement,Doctor's fee,Cremation forms (where applicable),82,TRUE,3
+disbursement,Minister / celebrant fee,Officiant for the service,180,TRUE,4
+disbursement,Grave opening fee,Cemetery grave opening,650,TRUE,5
+disbursement,Other third-party costs,Other disbursements as they arise,0,TRUE,6
