@@ -12,7 +12,7 @@ export default function LoginPage({
   const fromPath = searchParams.from && searchParams.from.startsWith("/") ? searchParams.from : "/";
 
   return (
-    <div className="min-h-screen bg-navy-900">
+    <div className="min-h-screen bg-navy-600">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-10">
         <div className="text-center">
           <h1 className="heading-serif text-3xl text-white sm:text-4xl">

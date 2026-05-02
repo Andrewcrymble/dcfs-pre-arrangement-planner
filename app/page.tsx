@@ -995,7 +995,7 @@ function StepSummary({
         </section>
       )}
 
-      <section className="mt-5 rounded-xl bg-navy-900 p-5 text-white">
+      <section className="mt-5 rounded-xl bg-navy-700 p-5 text-white">
         <div className="flex items-baseline justify-between">
           <span className="text-sm uppercase tracking-wider text-gold-300">
             Total estimated cost

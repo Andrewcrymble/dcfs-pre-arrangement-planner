@@ -22,7 +22,7 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         <div className="min-h-screen flex flex-col">
-          <header className="bg-navy-900 text-white">
+          <header className="bg-navy-600 text-white">
             <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
               <div>
                 <p className="heading-serif text-2xl leading-tight sm:text-3xl">

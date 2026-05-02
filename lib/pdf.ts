@@ -4,7 +4,7 @@ import type { FormState, SelectedLine } from "./types";
 import { formatGBP } from "./sheets";
 import { PDF_DISCLAIMER, totalsForLines, isDirectFuneralType } from "./estimate";
 
-const NAVY: [number, number, number] = [42, 71, 21];
+const NAVY: [number, number, number] = [86, 147, 32];
 const GOLD: [number, number, number] = [47, 190, 212];
 const SLATE: [number, number, number] = [90, 100, 80];
 

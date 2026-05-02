@@ -33,7 +33,7 @@ export function OptionListSingle({ items, selected, onChange, showPrice = true }
           >
             <span
               className={`mt-1 inline-block h-5 w-5 flex-shrink-0 rounded-full border-2 ${
-                isSelected ? "border-navy-900 bg-navy-900" : "border-mist-300 bg-white"
+                isSelected ? "border-navy-600 bg-navy-600" : "border-mist-300 bg-white"
               }`}
               aria-hidden
             >
@@ -91,7 +91,7 @@ export function OptionListMulti({ items, selected, onToggle, showPrice = true }:
           >
             <span
               className={`mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 ${
-                isSelected ? "border-navy-900 bg-navy-900" : "border-mist-300 bg-white"
+                isSelected ? "border-navy-600 bg-navy-600" : "border-mist-300 bg-white"
               }`}
               aria-hidden
             >
