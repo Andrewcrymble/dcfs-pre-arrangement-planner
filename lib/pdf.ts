@@ -318,7 +318,10 @@ export async function generateEstimatePdf(
       head: [["Category", "Item", "Estimated cost"]],
       body: funeralRows,
       theme: "grid",
-      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold" },
+      // Light fill + dark text — guaranteed to render on every viewer /
+      // printer (white-on-dark fills sometimes print/preview as invisible
+      // text if the fill layer is suppressed).
+      headStyles: { fillColor: [235, 235, 235], textColor: [40, 40, 40], fontStyle: "bold" },
       bodyStyles: { textColor: [40, 40, 40], fontSize: 10 },
       columnStyles: {
         0: { cellWidth: 110 },
@@ -423,14 +426,15 @@ export async function generateEstimatePdf(
     addPage();
     y = LETTERHEAD_TOP_SAFE;
   }
-  doc.setFillColor(...NAVY);
+  // Light grey band with dark text — print-safe and always renders.
+  // Was previously dark fill + white text which some viewers swallow.
+  doc.setFillColor(235, 235, 235);
   doc.rect(margin, y, contentWidth, 38, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...NAVY);
   doc.text("Total estimated cost", margin + 14, y + 24);
-  doc.setTextColor(...GOLD);
-  doc.setFontSize(14);
+  doc.setFontSize(15);
   doc.text(formatGBP(totals.grandTotal), pageWidth - margin - 14, y + 24, { align: "right" });
   y += 60;
 
