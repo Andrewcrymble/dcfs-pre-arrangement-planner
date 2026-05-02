@@ -48,10 +48,10 @@ const CATEGORY_LABEL: Record<SelectedLine["category"], string> = {
 // Vertical safe zone inside the letterhead — content sits between these.
 // Logo block ends ~y=170, contact band starts ~y=720 on A4 (842pt tall).
 const LETTERHEAD_TOP_SAFE = 180;
-// Bumped up from 700: the letterhead's contact-info band starts higher
-// than originally assumed — content below ~660 was overlapping with the
-// "139 Upper Lisburn Road…" line on long estimates.
-const LETTERHEAD_BOTTOM_SAFE = 660;
+// The letterhead's contact-info band starts around y≈680 on the
+// "139 Upper Lisburn Road…" line. Cap content at 630 so even the next
+// line (subtotal labels, financed-row sub-italics) can't overlap it.
+const LETTERHEAD_BOTTOM_SAFE = 630;
 
 let cachedLetterhead: HTMLImageElement | null = null;
 
@@ -225,12 +225,17 @@ export async function generateEstimatePdf(
     ["Arrangement for", form.customer.arrangementFor || "—"],
   ];
   for (const [label, value] of detailLines) {
+    const wrapped = doc.splitTextToSize(value, contentWidth - 110);
+    const blockHeight = 14 * Math.max(1, wrapped.length);
+    if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
     doc.setFont("helvetica", "bold");
     doc.text(`${label}:`, margin, y);
     doc.setFont("helvetica", "normal");
-    const wrapped = doc.splitTextToSize(value, contentWidth - 110);
     doc.text(wrapped, margin + 110, y);
-    y += 14 * Math.max(1, wrapped.length);
+    y += blockHeight;
   }
 
   // ---- Person being arranged for (only when "Someone else" + name supplied)
@@ -308,7 +313,12 @@ export async function generateEstimatePdf(
         0: { cellWidth: 110 },
         2: { cellWidth: 90, halign: "right" },
       },
-      margin: { left: margin, right: margin },
+      // bottom margin keeps autoTable's auto-pagination above the
+      // letterhead's contact-info band (page height − safe bottom).
+      margin: { left: margin, right: margin, bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE },
+      // autoTable creates its own pages when the table is long; restamp
+      // the letterhead on those new pages so the branding never drops.
+      willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
     });
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
@@ -344,7 +354,12 @@ export async function generateEstimatePdf(
         0: { cellWidth: 110 },
         2: { cellWidth: 90, halign: "right" },
       },
-      margin: { left: margin, right: margin },
+      // bottom margin keeps autoTable's auto-pagination above the
+      // letterhead's contact-info band (page height − safe bottom).
+      margin: { left: margin, right: margin, bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE },
+      // autoTable creates its own pages when the table is long; restamp
+      // the letterhead on those new pages so the branding never drops.
+      willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
     });
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
@@ -442,7 +457,16 @@ export async function generateEstimatePdf(
       options.apr,
     );
     for (const opt of instalmentOptions) {
+      // A financed row needs ~26pt (main + italic sub); a plain row ~14pt.
+      // Check before drawing so the italic finance-charge note can never
+      // land in the letterhead band.
+      const rowHeight = opt.isFinanced ? 26 : 14;
+      if (y + rowHeight > LETTERHEAD_BOTTOM_SAFE) {
+        addPage();
+        y = LETTERHEAD_TOP_SAFE;
+      }
       doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
       doc.setTextColor(...NAVY);
       doc.text(opt.yearLabel, margin, y);
       doc.setFont("helvetica", "normal");
@@ -595,7 +619,7 @@ export async function generateEstimatePdf(
     ["Order of Service", "£40 per 50 copies"],
   ];
   for (const [label, value] of optionalCosts) {
-    if (y + 14 > LETTERHEAD_BOTTOM_SAFE) {
+    if (y + 16 > LETTERHEAD_BOTTOM_SAFE) {
       addPage();
       y = LETTERHEAD_TOP_SAFE;
     }
