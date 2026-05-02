@@ -233,6 +233,45 @@ export default function Home() {
       .then((data) => {
         const e = data?.estimate;
         if (!e) return;
+
+        // Prefer the full saved snapshot if present — restores every
+        // wizard selection (funeral type, coffin, transport, additional
+        // services, disbursements, custom charges, wishes). Falls back
+        // to summary-only restore for older records that pre-date the
+        // Data column.
+        const dataRaw = e.Data;
+        if (typeof dataRaw === "string" && dataRaw.trim() !== "") {
+          try {
+            const snap = JSON.parse(dataRaw);
+            setForm((prev) => ({
+              ...prev,
+              customer: { ...prev.customer, ...(snap.customer || {}) },
+              person: { ...prev.person, ...(snap.person || {}) },
+              funeralType: snap.funeralType ?? prev.funeralType,
+              serviceChoice: snap.serviceChoice ?? prev.serviceChoice,
+              coffin: snap.coffin ?? prev.coffin,
+              transport: Array.isArray(snap.transport) ? snap.transport : prev.transport,
+              additionalServices: Array.isArray(snap.additionalServices)
+                ? snap.additionalServices
+                : prev.additionalServices,
+              disbursements: Array.isArray(snap.disbursements)
+                ? snap.disbursements
+                : prev.disbursements,
+              customDisbursements: Array.isArray(snap.customDisbursements)
+                ? snap.customDisbursements
+                : prev.customDisbursements,
+              wishes: { ...prev.wishes, ...(snap.wishes || {}) },
+              directPackageDiscount:
+                typeof snap.directPackageDiscount === "boolean"
+                  ? snap.directPackageDiscount
+                  : prev.directPackageDiscount,
+            }));
+            return;
+          } catch {
+            // JSON parse failed — fall through to summary-only restore.
+          }
+        }
+
         // Sheet cells come back as their inferred JS type — a phone number
         // "2222" arrives as a JS number, not a string. Coerce defensively
         // so the wizard's .trim() / etc. calls never explode.
@@ -1554,6 +1593,24 @@ function SummaryActions({
     try {
       const pdfBase64 = uint8ArrayToBase64(pdfResult.bytes);
       const totalsForUpload = totalsForLines(lines);
+      // Full form snapshot — stored on the Estimates row so reopening
+      // the record from the dashboard restores every selection (funeral
+      // type, coffin, transport, additional services, disbursements,
+      // wishes, custom charges, discount). arrangerNotes is intentionally
+      // NOT persisted here — those are an in-session staff log.
+      const selectionsSnapshot = {
+        customer: form.customer,
+        person: form.person,
+        funeralType: form.funeralType,
+        serviceChoice: form.serviceChoice,
+        coffin: form.coffin,
+        transport: form.transport,
+        additionalServices: form.additionalServices,
+        disbursements: form.disbursements,
+        customDisbursements: form.customDisbursements,
+        wishes: form.wishes,
+        directPackageDiscount: form.directPackageDiscount,
+      };
       const resp = await fetch("/api/upload-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1567,6 +1624,7 @@ function SummaryActions({
               ? form.person
               : null,
           total: totalsForUpload.grandTotal,
+          selections: selectionsSnapshot,
         }),
       });
       const data = await resp.json().catch(() => ({}));

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { pdfBase64, filename, estimateId, customer, person, total } = payload;
+  const { pdfBase64, filename, estimateId, customer, person, total, selections } = payload;
   if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
     return NextResponse.json({ error: "pdfBase64 required" }, { status: 400 });
   }
@@ -44,6 +44,11 @@ export async function POST(req: Request) {
         customer,
         person,
         total,
+        // Full form snapshot (JSON) so the wizard can restore every
+        // selection — funeral type, coffin, transport, additional
+        // services, disbursements, wishes — when staff reopens this
+        // record. Stored in the "Data" column of the Estimates sheet.
+        selections,
       }),
       cache: "no-store",
       // Apps Script web apps usually 302 from /exec to a googleusercontent

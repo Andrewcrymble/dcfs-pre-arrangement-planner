@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import SignOutButton from "@/components/SignOutButton";
@@ -8,6 +8,15 @@ export const metadata: Metadata = {
   title: "Pre-Arranged Funeral Estimate Tool — David Crymble & Sons",
   description:
     "A guided way to explore pre-arranged funeral options and receive a personalised estimate from David Crymble & Sons Funeral Directors.",
+};
+
+// Explicit viewport so phones / iPads render at sensible scale. We
+// deliberately allow user zoom (no maximum-scale lock) — staff will
+// often want to enlarge text on a small screen.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#569320",
 };
 
 export default async function RootLayout({
@@ -23,7 +32,7 @@ export default async function RootLayout({
       <body>
         <div className="min-h-screen flex flex-col">
           <header className="bg-navy-600 text-white">
-            <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
+            <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:px-6 sm:py-5">
               <div>
                 <p className="heading-serif text-2xl leading-tight sm:text-3xl">
                   David Crymble &amp; Sons
@@ -32,20 +41,20 @@ export default async function RootLayout({
                   Funeral Directors
                 </p>
               </div>
-              <div className="hidden text-right text-sm text-mist-100 sm:block">
-                <p>Woodstock Road · Finaghy</p>
-                <p className="text-gold-300">
+              <div className="text-sm text-mist-100 sm:text-right">
+                <p className="hidden sm:block">Woodstock Road · Finaghy</p>
+                <p className="hidden text-gold-300 sm:block">
                   {process.env.NEXT_PUBLIC_BUSINESS_PHONE || "028 9066 7784"}
                 </p>
                 {session && (
-                  <p className="mt-1 text-xs text-mist-100/80">
+                  <p className="text-xs text-mist-100/80 sm:mt-1">
                     Signed in as <span className="font-semibold">{session.name}</span>
                     {" · "}
                     <SignOutButton />
                   </p>
                 )}
                 {session && (
-                  <p className="mt-1 flex flex-wrap justify-end gap-x-3 text-xs text-mist-100/80">
+                  <nav className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-mist-100/90 sm:mt-1 sm:justify-end">
                     <a href="/" className="underline-offset-2 hover:text-white hover:underline">
                       Dashboard
                     </a>
@@ -77,7 +86,7 @@ export default async function RootLayout({
                         Edit pricing ↗
                       </a>
                     )}
-                  </p>
+                  </nav>
                 )}
               </div>
             </div>
