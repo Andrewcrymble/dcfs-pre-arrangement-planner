@@ -1190,66 +1190,62 @@ function SummaryActions({
     }
   };
 
-  const handleEmail = () => {
-    const to = process.env.NEXT_PUBLIC_ESTIMATE_EMAIL || "enquiries@davidcrymble.co.uk";
-    const subject = encodeURIComponent(
-      `Pre-arranged funeral estimate enquiry — ${form.customer.fullName || "(no name)"}`,
-    );
-    const totals = totalsForLines(lines);
-    const w = form.wishes;
-    const wishesPairs: Array<[string, string]> = (
-      [
-        ["Date of birth", w.dateOfBirth],
-        ["Doctor / GP", w.doctorName],
-        ["Next of kin", [w.nextOfKinName, w.nextOfKinPhone].filter(Boolean).join(" · ")],
-        ["Minister / officiant", w.officiant],
-        ["Hymns & music", w.music],
-        ["Readings", w.readings],
-        ["Flowers / donations", w.flowers],
-        ["Dress code", w.dressCode],
-        ["Catering / wake", w.catering],
-        ["Anything else", w.other],
-      ] as Array<[string, string]>
-    ).filter(([, v]) => v && v.trim() !== "");
+  const handleWhatsApp = async () => {
+    if (downloading) return;
+    // Generate the PDF so it's downloaded for staff to forward into the
+    // WhatsApp chat manually (Beepmate's /send endpoint is text-only).
+    // The text summary below is what posts to the Crymble & Sons group.
+    setDownloading(true);
+    try {
+      await generateEstimatePdf(form, lines);
+    } catch (err) {
+      alert(
+        "Sorry — we couldn't generate your PDF. Please try again or contact us directly.",
+      );
+      console.error(err);
+      setDownloading(false);
+      return;
+    }
 
-    const bodyLines = [
-      "Hello,",
+    const totals = totalsForLines(lines);
+    const messageLines = [
+      `📋 NEW ESTIMATE — ${form.customer.fullName || "(no name)"}`,
       "",
-      "I'd like to discuss the following pre-arranged funeral estimate:",
-      "",
-      `Name: ${form.customer.fullName}`,
-      `Telephone: ${form.customer.telephone}`,
-      `Email: ${form.customer.email}`,
-      `Branch: ${form.customer.branch}`,
-      `Arrangement for: ${form.customer.arrangementFor}`,
+      `Phone: ${form.customer.telephone || "—"}`,
+      `Email: ${form.customer.email || "—"}`,
+      `Branch: ${form.customer.branch || "—"}`,
+      `For: ${form.customer.arrangementFor || "—"}`,
       "",
       "Selections:",
-      ...lines.map((l) => `  • ${l.item_name} — ${formatGBP(l.price)}`),
+      ...lines.map((l) => `• ${l.item_name} — ${formatGBP(l.price)}`),
       "",
-      `Total estimated cost: ${formatGBP(totals.grandTotal)}`,
-      ...(wishesPairs.length > 0
-        ? ["", "Wishes & important information:", ...wishesPairs.map(([k, v]) => `  • ${k}: ${v}`)]
-        : []),
-      ...(form.arrangerNotes.length > 0
-        ? [
-            "",
-            "Funeral arranger notes:",
-            ...[...form.arrangerNotes]
-              .sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1))
-              .flatMap((n) => [
-                `  [${formatNoteTimestamp(n.timestamp)} — ${n.arranger}]`,
-                `  ${n.text}`,
-                "",
-              ]),
-          ]
-        : []),
-      "",
-      "Please contact me to discuss further.",
-      "",
-      "Many thanks.",
+      `Total: ${formatGBP(totals.grandTotal)}`,
     ];
-    const body = encodeURIComponent(bodyLines.join("\n"));
-    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+    const message = messageLines.join("\n");
+
+    try {
+      const res = await fetch("/api/beepmate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      alert(
+        "Sent to Crymble & Sons WhatsApp.\n\nThe PDF has also been downloaded — forward it into the chat if you want the customer to see the full document.",
+      );
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Couldn't send to WhatsApp: " +
+          (err instanceof Error ? err.message : "unknown error") +
+          "\n\nThe PDF has still been downloaded.",
+      );
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -1258,8 +1254,13 @@ function SummaryActions({
         <button type="button" onClick={onBack} className="btn-secondary">
           ← Back
         </button>
-        <button type="button" onClick={handleEmail} className="btn-secondary">
-          ✉ Email Estimate Request
+        <button
+          type="button"
+          onClick={handleWhatsApp}
+          disabled={downloading}
+          className="btn-secondary"
+        >
+          {downloading ? "Sending…" : "Send to Crymble & Sons WhatsApp"}
         </button>
         <button
           type="button"
