@@ -1082,7 +1082,7 @@ function ArrangerNotesLog({
         Funeral arranger notes
       </h3>
       <p className="mt-1 text-xs text-mist-400">
-        Internal log — each entry is stamped with the arranger's name and the time. All notes appear on the PDF.
+        Internal log — each entry is stamped with the arranger's name and the time. Staff-only — notes do not appear on the customer PDF.
       </p>
 
       {sorted.length > 0 && (

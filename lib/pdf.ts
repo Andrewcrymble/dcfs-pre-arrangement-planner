@@ -307,49 +307,9 @@ export async function generateEstimatePdf(form: FormState, lines: SelectedLine[]
     y += 6;
   }
 
-  // ---- Funeral arranger notes (timestamped log, oldest first)
-  if (form.arrangerNotes && form.arrangerNotes.length > 0) {
-    if (y > LETTERHEAD_BOTTOM_SAFE - 60) {
-      addPage();
-      y = LETTERHEAD_TOP_SAFE;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...NAVY);
-    doc.text("Funeral arranger notes", margin, y);
-    y += 6;
-    doc.setDrawColor(...GOLD);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, margin + contentWidth, y);
-    y += 14;
-
-    const sortedNotes = [...form.arrangerNotes].sort((a, b) =>
-      a.timestamp < b.timestamp ? -1 : 1,
-    );
-
-    for (const n of sortedNotes) {
-      const stamp = formatPdfTimestamp(n.timestamp);
-      const headerText = `${stamp}  —  ${n.arranger}`;
-      const wrappedBody = doc.splitTextToSize(n.text, contentWidth);
-      const blockHeight = 12 + wrappedBody.length * 12 + 8;
-      if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
-        addPage();
-        y = LETTERHEAD_TOP_SAFE;
-      }
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(...SLATE);
-      doc.text(headerText, margin, y);
-      y += 12;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(40, 40, 40);
-      doc.text(wrappedBody, margin, y);
-      y += wrappedBody.length * 12 + 8;
-    }
-    y += 4;
-  }
+  // Funeral arranger notes are intentionally NOT rendered on the PDF — they
+  // are an internal staff log, not for the customer-facing estimate. They
+  // remain visible in the on-screen Summary and in the mailto body.
 
   // ---- Disclaimer (sits inside the letterhead's safe zone — no custom footer
   // needed because the letterhead has its own bottom band with contact details
