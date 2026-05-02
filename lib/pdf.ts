@@ -7,6 +7,7 @@ import {
   totalsForLines,
   isDirectFuneralType,
   generateEstimateId,
+  monthlyInstalmentOptions,
 } from "./estimate";
 
 // PDF uses muted black/grey palette (more formal than the on-screen green
@@ -82,7 +83,7 @@ export async function generateEstimatePdf(
   form: FormState,
   lines: SelectedLine[],
   estimateId: string = generateEstimateId(),
-  options: { skipDownload?: boolean; arrangerName?: string } = {},
+  options: { skipDownload?: boolean; arrangerName?: string; apr?: number } = {},
 ): Promise<{ bytes: Uint8Array; filename: string; estimateId: string }> {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -407,9 +408,10 @@ export async function generateEstimatePdf(
   doc.text(formatGBP(totals.grandTotal), pageWidth - margin - 14, y + 24, { align: "right" });
   y += 60;
 
-  // ---- Monthly instalment options (1–5 years, simple division)
+  // ---- Monthly instalment options (1–5 years; 24-month interest-free
+  // window then 6% APR amortized on the remaining balance for longer terms)
   if (totals.grandTotal > 0) {
-    if (y > LETTERHEAD_BOTTOM_SAFE - 140) {
+    if (y > LETTERHEAD_BOTTOM_SAFE - 160) {
       addPage();
       y = LETTERHEAD_TOP_SAFE;
     }
@@ -433,29 +435,41 @@ export async function generateEstimatePdf(
     );
     y += 18;
 
-    const yearOptions: Array<[number, string]> = [
-      [12, "1 year"],
-      [24, "2 years"],
-      [36, "3 years"],
-      [48, "4 years"],
-      [60, "5 years"],
-    ];
-    for (const [months, label] of yearOptions) {
-      const monthly = totals.grandTotal / months;
+    const aprPct = (options.apr ?? 0.06) * 100;
+    const aprLabel = `${aprPct % 1 === 0 ? aprPct.toFixed(0) : aprPct.toFixed(2)}%`;
+    const instalmentOptions = monthlyInstalmentOptions(
+      totals.grandTotal,
+      options.apr,
+    );
+    for (const opt of instalmentOptions) {
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...NAVY);
-      doc.text(`${label}`, margin, y);
+      doc.text(opt.yearLabel, margin, y);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(40, 40, 40);
-      doc.text(`(${months} monthly instalments)`, margin + 70, y);
+      doc.text(`(${opt.months} monthly instalments)`, margin + 70, y);
+
       doc.setFont("helvetica", "bold");
       doc.text(
-        `${formatGBP(monthly)} / month`,
+        `${formatGBP(opt.monthly)} / month`,
         pageWidth - margin,
         y,
         { align: "right" },
       );
-      y += 14;
+      y += 12;
+      if (opt.isFinanced) {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(8);
+        doc.setTextColor(...SLATE);
+        doc.text(
+          `Finance charge: ${formatGBP(opt.financeCharge)} (${aprLabel} APR on balance after 24 months)`,
+          margin + 14,
+          y,
+        );
+        doc.setFontSize(10);
+        y += 12;
+      }
+      y += 2;
     }
 
     y += 4;
@@ -463,7 +477,8 @@ export async function generateEstimatePdf(
     doc.setFontSize(8);
     doc.setTextColor(...SLATE);
     const noteLines = doc.splitTextToSize(
-      "Figures are interest-free for the first 24 months. Plans extending beyond 24 months may incur a finance charge — your final monthly amount will be confirmed at sign-up.",
+      `First 24 months are interest-free. Beyond 24 months, a ${aprLabel} APR is applied to the remaining balance. ` +
+        "Figures are illustrative — your final monthly amount will be confirmed at sign-up.",
       contentWidth,
     );
     doc.text(noteLines, margin, y);

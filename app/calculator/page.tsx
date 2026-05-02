@@ -18,7 +18,7 @@ const num = (s: string): number => {
 };
 
 export default function CalculatorPage() {
-  const [planName, setPlanName] = useState("Bluebell Cremation Plan");
+  const [planName, setPlanName] = useState("David Crymble and Sons - With Grace");
   const [basePrice, setBasePrice] = useState("2690");
   const [term, setTerm] = useState("60");
   const [interestFree, setInterestFree] = useState("24");

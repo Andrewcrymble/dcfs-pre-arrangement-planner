@@ -13,6 +13,7 @@ import {
   isDirectFuneralType,
   isBundledForDirect,
   BUNDLED_DISBURSEMENTS_FOR_DIRECT,
+  monthlyInstalmentOptions,
 } from "@/lib/estimate";
 import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
@@ -1079,6 +1080,27 @@ function CustomChargesPanel({
   );
 }
 
+function useInstalmentApr(): number {
+  // Pulls the configured APR from the spreadsheet's Settings tab. The
+  // Apps Script returns a string (e.g. "0.06"); fall back to 6% if missing
+  // or unparseable so the screen never goes blank.
+  const [apr, setApr] = useState<number>(0.06);
+  useEffect(() => {
+    fetch("/api/setting?key=instalment_apr", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.value === "string" && d.value.trim() !== "") {
+          const v = parseFloat(d.value);
+          if (Number.isFinite(v) && v >= 0 && v <= 1) setApr(v);
+        }
+      })
+      .catch(() => {
+        // Leave default 0.06
+      });
+  }, []);
+  return apr;
+}
+
 function StepSummary({
   form,
   lines,
@@ -1092,6 +1114,9 @@ function StepSummary({
   addArrangerNote: (note: ArrangerNote) => void;
   removeArrangerNote: (id: string) => void;
 }) {
+  const apr = useInstalmentApr();
+  const aprPct = apr * 100;
+  const aprLabel = `${aprPct % 1 === 0 ? aprPct.toFixed(0) : aprPct.toFixed(2)}%`;
   const funeralLines = lines.filter((l) => l.category !== "disbursement");
   const disbLines = lines.filter((l) => l.category === "disbursement");
   const isDirect = isDirectFuneralType(form.funeralType);
@@ -1236,6 +1261,46 @@ function StepSummary({
           </span>
         </div>
       </section>
+
+      {totals.grandTotal > 0 && (
+        <section className="mt-5 rounded-xl border border-mist-200 bg-white p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
+            Monthly plan options — David Crymble &amp; Sons "With Grace"
+          </h3>
+          <p className="mt-1 text-xs text-mist-400">
+            First 24 months interest-free. Beyond that, {aprLabel} APR is applied to the remaining balance.
+          </p>
+          <ul className="mt-3 divide-y divide-mist-200">
+            {monthlyInstalmentOptions(totals.grandTotal, apr).map((opt) => (
+              <li
+                key={opt.months}
+                className="flex flex-col py-2 sm:flex-row sm:items-baseline sm:justify-between"
+              >
+                <span>
+                  <span className="font-semibold text-navy-900">{opt.yearLabel}</span>
+                  <span className="ml-2 text-xs text-mist-400">
+                    ({opt.months} monthly instalments)
+                  </span>
+                </span>
+                <span className="text-right">
+                  <span className="heading-serif text-lg font-semibold text-navy-900">
+                    {formatGBP(opt.monthly)}
+                  </span>
+                  <span className="ml-1 text-xs text-mist-400">/ month</span>
+                  {opt.isFinanced && (
+                    <span className="block text-[11px] italic text-mist-400">
+                      Finance charge {formatGBP(opt.financeCharge)} ({aprLabel} APR after 24 months)
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] italic text-mist-400">
+            Figures are illustrative — your final monthly amount will be confirmed at sign-up.
+          </p>
+        </section>
+      )}
 
       <ArrangerNotesLog
         notes={form.arrangerNotes}
@@ -1407,6 +1472,7 @@ function SummaryActions({
   onBack: () => void;
   editRef: string | null;
 }) {
+  const apr = useInstalmentApr();
   const [downloading, setDownloading] = useState(false);
   const [arrangerName, setArrangerName] = useState<string>("");
   const [toast, setToast] = useState<{
@@ -1443,7 +1509,7 @@ function SummaryActions({
         form,
         lines,
         editRef || undefined,
-        { arrangerName },
+        { arrangerName, apr },
       );
       setToast({
         kind: "success",
@@ -1474,7 +1540,7 @@ function SummaryActions({
         form,
         lines,
         editRef || undefined,
-        { skipDownload: true, arrangerName },
+        { skipDownload: true, arrangerName, apr },
       );
     } catch (err) {
       console.error("PDF generation failed:", err);

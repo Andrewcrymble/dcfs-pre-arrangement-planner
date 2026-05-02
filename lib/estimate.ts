@@ -6,6 +6,59 @@ export function isDirectFuneralType(name: string): boolean {
   return (DIRECT_FUNERAL_TYPES as readonly string[]).includes(name);
 }
 
+// "With Grace" instalment terms: first 24 months interest-free, then 6% APR
+// on the remaining balance. Equal monthly payment throughout.
+export const INSTALMENT_INTEREST_FREE_MONTHS = 24;
+export const INSTALMENT_APR = 0.06;
+
+export interface MonthlyOption {
+  months: number;
+  yearLabel: string;
+  monthly: number;
+  totalPaid: number;
+  financeCharge: number;
+  isFinanced: boolean;
+}
+
+// Solves for the equal monthly payment M such that during the IF window M
+// pays principal at no interest, and the remaining balance is amortized at
+// the monthly rate over the post-IF window with the same M:
+//   M = P·r / (1 + IF·r − (1+r)^−n)   where n = months − IF
+// `apr` is fractional (0.06 for 6%). Defaults to INSTALMENT_APR but the
+// caller can pass a value pulled from the Settings sheet at runtime.
+export function monthlyInstalmentOptions(
+  grandTotal: number,
+  apr: number = INSTALMENT_APR,
+): MonthlyOption[] {
+  const r = apr / 12;
+  const compute = (months: number): number => {
+    if (grandTotal <= 0 || months <= 0) return 0;
+    if (months <= INSTALMENT_INTEREST_FREE_MONTHS) return grandTotal / months;
+    const n = months - INSTALMENT_INTEREST_FREE_MONTHS;
+    const denom = 1 + INSTALMENT_INTEREST_FREE_MONTHS * r - Math.pow(1 + r, -n);
+    return (grandTotal * r) / denom;
+  };
+  return [
+    [12, "1 year"],
+    [24, "2 years"],
+    [36, "3 years"],
+    [48, "4 years"],
+    [60, "5 years"],
+  ].map(([months, yearLabel]) => {
+    const m = months as number;
+    const monthly = compute(m);
+    const totalPaid = monthly * m;
+    return {
+      months: m,
+      yearLabel: yearLabel as string,
+      monthly,
+      totalPaid,
+      financeCharge: Math.max(0, totalPaid - grandTotal),
+      isFinanced: m > INSTALMENT_INTEREST_FREE_MONTHS,
+    };
+  });
+}
+
 // Internal reference for an estimate. Format: DCFS-YYMMDD-XXXX.
 // Date-sortable so we can find recent ones at a glance; the 4-hex-char
 // suffix is enough to avoid collisions for the volume the office sees.
