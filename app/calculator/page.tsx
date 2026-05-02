@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { calculate, generateCalculatorPdf } from "@/lib/calculatorPdf";
 
@@ -22,9 +22,28 @@ export default function CalculatorPage() {
   const [basePrice, setBasePrice] = useState("2690");
   const [term, setTerm] = useState("60");
   const [interestFree, setInterestFree] = useState("24");
-  const [totalFees, setTotalFees] = useState("512.85");
+  const [aprPct, setAprPct] = useState("6"); // percentage (e.g. 6 for 6%)
   const [deposit, setDeposit] = useState("0");
   const [downloading, setDownloading] = useState(false);
+
+  // Pull the configured default APR from the spreadsheet's Settings tab
+  // so the calculator opens with the same rate the customer estimate
+  // uses. The user can still override per-calculation.
+  useEffect(() => {
+    fetch("/api/setting?key=instalment_apr", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.value === "string" && d.value.trim() !== "") {
+          const v = parseFloat(d.value);
+          if (Number.isFinite(v) && v >= 0 && v <= 1) {
+            setAprPct(String(v * 100));
+          }
+        }
+      })
+      .catch(() => {
+        // Leave default 6%
+      });
+  }, []);
 
   const inputs = useMemo(
     () => ({
@@ -32,10 +51,10 @@ export default function CalculatorPage() {
       basePrice: num(basePrice),
       termMonths: Math.max(1, Math.floor(num(term))),
       interestFreeMonths: Math.max(0, Math.floor(num(interestFree))),
-      totalFees: num(totalFees),
+      apr: Math.max(0, num(aprPct)) / 100,
       deposit: num(deposit),
     }),
-    [planName, basePrice, term, interestFree, totalFees, deposit],
+    [planName, basePrice, term, interestFree, aprPct, deposit],
   );
 
   const results = useMemo(() => calculate(inputs), [inputs]);
@@ -93,14 +112,17 @@ export default function CalculatorPage() {
             />
           </div>
           <div>
-            <label className="field-label" htmlFor="totalFees">Total fees / finance charge (£)</label>
+            <label className="field-label" htmlFor="apr">APR after interest-free period (%)</label>
             <input
-              id="totalFees"
+              id="apr"
               className="field-input"
               inputMode="decimal"
-              value={totalFees}
-              onChange={(e) => setTotalFees(e.target.value)}
+              value={aprPct}
+              onChange={(e) => setAprPct(e.target.value)}
             />
+            <p className="mt-1 text-xs text-mist-400">
+              Pulled from Settings sheet. Edit there to change the default.
+            </p>
           </div>
           <div>
             <label className="field-label" htmlFor="term">Payment term (months)</label>
@@ -143,7 +165,11 @@ export default function CalculatorPage() {
           <Row label="Base plan price" value={fmt(inputs.basePrice)} />
           <Row label="Payment format" value={`${inputs.termMonths} monthly instalments`} />
           <Row label="Interest-free period" value={`First ${inputs.interestFreeMonths} months interest free`} />
-          <Row label="Total fees / finance charge" value={fmt(inputs.totalFees)} />
+          <Row
+            label="APR (after interest-free period)"
+            value={`${(inputs.apr * 100) % 1 === 0 ? (inputs.apr * 100).toFixed(0) : (inputs.apr * 100).toFixed(2)}%`}
+          />
+          <Row label="Finance charge (calculated)" value={fmt(results.financeCharge)} />
           {inputs.deposit > 0 && <Row label="Deposit" value={`−${fmt(inputs.deposit)}`} />}
         </dl>
 

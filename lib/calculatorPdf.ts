@@ -25,7 +25,7 @@ export interface CalculatorInputs {
   basePrice: number;
   termMonths: number;
   interestFreeMonths: number;
-  totalFees: number;
+  apr: number; // fractional (0.06 = 6%)
   deposit: number;
 }
 
@@ -37,12 +37,31 @@ export interface CalculatorResults {
   financeCharge: number;
 }
 
+// Equal-monthly amortisation: during the interest-free window M pays
+// principal at no interest, then the remaining balance is amortised at
+// the monthly rate over the post-IF window with the same M.
+//   M = P·r / (1 + IF·r − (1+r)^−n)   where n = months − IF
 export function calculate(inputs: CalculatorInputs): CalculatorResults {
-  const totalPayable = inputs.basePrice + inputs.totalFees - inputs.deposit;
-  const monthlyPayment = inputs.termMonths > 0 ? totalPayable / inputs.termMonths : 0;
-  const interestFreeAmount = monthlyPayment * inputs.interestFreeMonths;
-  const remainingAfterIf = totalPayable - interestFreeAmount;
-  const financeCharge = inputs.totalFees;
+  const principal = Math.max(0, inputs.basePrice - inputs.deposit);
+  const term = Math.max(0, inputs.termMonths);
+  const ifMonths = Math.min(Math.max(0, inputs.interestFreeMonths), term);
+  const r = inputs.apr / 12;
+
+  let monthlyPayment = 0;
+  if (term > 0) {
+    if (term <= ifMonths || r === 0) {
+      monthlyPayment = principal / term;
+    } else {
+      const n = term - ifMonths;
+      const denom = 1 + ifMonths * r - Math.pow(1 + r, -n);
+      monthlyPayment = (principal * r) / denom;
+    }
+  }
+  const totalPaid = monthlyPayment * term;
+  const financeCharge = Math.max(0, totalPaid - principal);
+  const totalPayable = inputs.basePrice + financeCharge - inputs.deposit;
+  const interestFreeAmount = monthlyPayment * ifMonths;
+  const remainingAfterIf = Math.max(0, totalPaid - interestFreeAmount);
   return {
     totalPayable,
     monthlyPayment,
@@ -119,10 +138,14 @@ export async function generateCalculatorPdf(
     y += 22;
   };
 
+  const aprPct = inputs.apr * 100;
+  const aprLabel = `${aprPct % 1 === 0 ? aprPct.toFixed(0) : aprPct.toFixed(2)}%`;
+
   row("Base plan price", fmt(inputs.basePrice));
   row("Payment format", `${inputs.termMonths} monthly instalments`);
   row("Interest-free period", `First ${inputs.interestFreeMonths} months interest free`);
-  row("Total fees / finance charge", fmt(inputs.totalFees));
+  row("APR (after interest-free period)", aprLabel);
+  row("Finance charge", fmt(r.financeCharge));
   if (inputs.deposit > 0) row("Deposit", `−${fmt(inputs.deposit)}`);
 
   y += 4;
