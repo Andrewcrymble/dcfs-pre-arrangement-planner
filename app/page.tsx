@@ -39,12 +39,26 @@ function combineDateTime(date: string, time: string): string {
 
 function addMinutesIso(iso: string, minutes: number): string {
   if (!iso) return iso;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
+  // We deliberately treat the input as a local-time ISO (YYYY-MM-DDTHH:MM:SS)
+  // and return one of the same shape — Date#toISOString() converts to UTC
+  // which would corrupt the time when we tell Microsoft Graph the timezone
+  // is Europe/London. So parse the parts manually.
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return iso;
+  const d = new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] || 0),
+  );
   d.setMinutes(d.getMinutes() + minutes);
-  // Strip trailing Z so the timezone stays inferred (we treat it as local
-  // then send Europe/London to Graph).
-  return d.toISOString().replace(/\.\d+Z$/, "");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
 }
 
 function formatGBP(n: number | string): string {
@@ -157,7 +171,35 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Update failed");
+      setToast({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Update failed",
+      });
+    } finally {
+      setUpdatingRef(null);
+    }
+  };
+
+  const deleteRecord = async (ref: string, customer: string) => {
+    if (!window.confirm(
+      `Delete record for "${customer || ref}"? This removes it from the dashboard and the spreadsheet permanently. The PDF in Drive is NOT deleted.`,
+    )) {
+      return;
+    }
+    setUpdatingRef(ref);
+    try {
+      const res = await fetch(`/api/estimates?ref=${encodeURIComponent(ref)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setToast({ kind: "success", text: `Deleted ${ref}` });
+      await load();
+    } catch (err) {
+      setToast({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Delete failed",
+      });
     } finally {
       setUpdatingRef(null);
     }
@@ -413,6 +455,20 @@ export default function DashboardPage() {
               Reset
             </button>
           )}
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              deleteRecord(row.Ref, row.Customer || "");
+            }}
+            className="ml-auto text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+            aria-label="Delete record"
+            title="Delete record"
+          >
+            Delete
+          </button>
         </div>
       </Link>
     );

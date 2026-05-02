@@ -196,27 +196,32 @@ export default function Home() {
       .then((data) => {
         const e = data?.estimate;
         if (!e) return;
+        // Sheet cells come back as their inferred JS type — a phone number
+        // "2222" arrives as a JS number, not a string. Coerce defensively
+        // so the wizard's .trim() / etc. calls never explode.
+        const str = (v: unknown): string => (v == null ? "" : String(v));
+        const personName = str(e.Person);
         setForm((prev) => ({
           ...prev,
           customer: {
             ...prev.customer,
-            fullName: e.Customer || prev.customer.fullName,
-            telephone: e.Phone || prev.customer.telephone,
-            email: e.Email || prev.customer.email,
+            fullName: str(e.Customer) || prev.customer.fullName,
+            telephone: str(e.Phone) || prev.customer.telephone,
+            email: str(e.Email) || prev.customer.email,
             branch:
               e.Branch === "Woodstock Road" || e.Branch === "Finaghy"
                 ? e.Branch
                 : prev.customer.branch,
             arrangementFor:
-              e.Person && e.Person.trim() !== ""
+              personName.trim() !== ""
                 ? "Someone else"
                 : prev.customer.arrangementFor,
           },
-          person: e.Person
+          person: personName
             ? {
                 ...prev.person,
-                fullName: e.Person,
-                relationship: e.Relationship || "",
+                fullName: personName,
+                relationship: str(e.Relationship),
               }
             : prev.person,
         }));

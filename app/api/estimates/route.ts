@@ -74,3 +74,11 @@ export async function PATCH(req: Request) {
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { ok: true });
 }
+
+export async function DELETE(req: Request) {
+  const ref = new URL(req.url).searchParams.get("ref");
+  if (!ref) return NextResponse.json({ error: "ref required" }, { status: 400 });
+  const { data, error, status } = await callAppsScript("delete_estimate", { ref });
+  if (error) return NextResponse.json({ error }, { status });
+  return NextResponse.json(data ?? { ok: true });
+}
