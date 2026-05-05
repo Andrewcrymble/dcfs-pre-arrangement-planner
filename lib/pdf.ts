@@ -107,51 +107,54 @@ export async function generateEstimatePdf(
   // ============================================================
   // ---- Single continuous flow: opening letter directly into estimate
   // ============================================================
-  let y = LETTERHEAD_TOP_SAFE + 10;
-
-  // Address block (top-left). Name then multi-line address.
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
-  if (form.customer.fullName) {
-    doc.text(form.customer.fullName, margin, y);
-    y += 14;
-  }
-  if (form.customer.address) {
-    const addrLines = form.customer.address
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const line of addrLines) {
-      const wrapped = doc.splitTextToSize(line, contentWidth - 220);
-      doc.text(wrapped, margin, y);
-      y += 14 * Math.max(1, wrapped.length);
-    }
-  }
-
-  // Reference + date (top-right column)
-  doc.setFontSize(10);
-  doc.setTextColor(...SLATE);
+  // The addressed-letter header (name/address top-left, ref/date
+  // top-right, "Dear …,") is reused on page 2 above the prices, so the
+  // customer sees the same context whether they're holding page 1 or
+  // page 2. Returns the y baseline below the salutation, ready for the
+  // page-specific opening line.
   const dateStr = new Date().toLocaleDateString("en-GB", {
     weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
   });
-  doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {
-    align: "right",
-  });
-  doc.text(dateStr, pageWidth - margin, LETTERHEAD_TOP_SAFE + 24, {
-    align: "right",
-  });
+  const drawAddressedHeader = (): number => {
+    let yh = LETTERHEAD_TOP_SAFE + 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    if (form.customer.fullName) {
+      doc.text(form.customer.fullName, margin, yh);
+      yh += 14;
+    }
+    if (form.customer.address) {
+      const addrLines = form.customer.address
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const line of addrLines) {
+        const wrapped = doc.splitTextToSize(line, contentWidth - 220);
+        doc.text(wrapped, margin, yh);
+        yh += 14 * Math.max(1, wrapped.length);
+      }
+    }
+    doc.setFontSize(10);
+    doc.setTextColor(...SLATE);
+    doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {
+      align: "right",
+    });
+    doc.text(dateStr, pageWidth - margin, LETTERHEAD_TOP_SAFE + 24, {
+      align: "right",
+    });
+    yh = Math.max(yh + 18, LETTERHEAD_TOP_SAFE + 90);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, yh);
+    return yh + 28;
+  };
 
-  // Salutation
-  y = Math.max(y + 18, LETTERHEAD_TOP_SAFE + 90);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
-  doc.text(`Dear ${form.customer.fullName || "Sir / Madam"},`, margin, y);
-  y += 28;
+  let y = drawAddressedHeader();
 
   // Opening line — names the person being arranged for when applicable
   // so the customer immediately sees who the estimate is for.
@@ -196,15 +199,17 @@ export async function generateEstimatePdf(
   ].some((v) => typeof v === "string" && v.trim() !== "");
 
   addPage();
-  y = LETTERHEAD_TOP_SAFE;
-
-  // Short intro line at the top of the prices page so the table
-  // doesn't sit cold against the letterhead.
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
-  doc.text("Please find below a breakdown of plan charges.", margin, y);
-  y += 22;
+  // Re-stamp the addressed header at the top of the prices page so the
+  // customer always knows who the estimate is for and which reference it
+  // belongs to, even if pages get separated. Same name/address/reference
+  // /salutation as page 1, with a "below" opening line.
+  y = drawAddressedHeader();
+  const page2OpeningLines = doc.splitTextToSize(
+    `Please find below a funeral plan estimate as discussed${personFor}.`,
+    contentWidth,
+  );
+  doc.text(page2OpeningLines, margin, y);
+  y += page2OpeningLines.length * 16 + 14;
 
   // ---- Itemised table
   const funeralRows = lines
@@ -350,6 +355,26 @@ export async function generateEstimatePdf(
     doc.text("Disbursements subtotal", margin, y + 26);
     doc.text(formatGBP(totals.disbursementsTotal), pageWidth - margin, y + 26, { align: "right" });
     y += 40;
+
+    // RPI guarantee paragraph — mandatory wording that explains that the
+    // disbursements figure shown is what's covered by the plan today, but
+    // RPI uplift on the actual third-party costs at the time of the
+    // funeral may exceed it and become payable by the family.
+    const rpiParagraph =
+      `Disbursements costs of ${formatGBP(totals.disbursementsTotal)} are included. ` +
+      "They are guaranteed to the RPI (Retail Price Index) and may require " +
+      "additional payment from the estate/next of kin at the time of the funeral.";
+    const rpiLines = doc.splitTextToSize(rpiParagraph, contentWidth);
+    const rpiHeight = rpiLines.length * 12 + 6;
+    if (y + rpiHeight > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(...SLATE);
+    doc.text(rpiLines, margin, y);
+    y += rpiHeight;
   }
 
   // ---- Person being arranged for (after prices, mirrors the on-screen
