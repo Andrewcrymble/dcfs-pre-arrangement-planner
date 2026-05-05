@@ -34,8 +34,23 @@ export async function POST(req: Request) {
     const resp = await fetch(url, { cache: "no-store" });
     const text = await resp.text();
     if (!resp.ok) {
+      // Beepmate sometimes returns a 500 with an empty body when the
+      // message contains characters their parser doesn't like, or when
+      // the URL exceeds their internal limit. Surface the encoded URL
+      // length and a hint so the toast/log narrows it down.
+      const ctype = resp.headers.get("content-type") || "(no content-type)";
+      const bodySample = text.trim() === "" ? "(empty body)" : text.slice(0, 200);
+      console.error(
+        `[beepmate] ${resp.status} from ${url.replace(/key=[^&]+/, "key=***")} — ` +
+          `msgLen=${message.length} encodedUrlLen=${url.length} ctype=${ctype} body=${bodySample}`,
+      );
       return NextResponse.json(
-        { error: `Beepmate returned ${resp.status}: ${text.slice(0, 200)}` },
+        {
+          error:
+            `Beepmate returned ${resp.status} (${bodySample}) — ` +
+            `msg ${message.length} chars, encoded URL ${url.length} chars. ` +
+            "If the message contains a long Drive link or unusual characters, that's a likely cause.",
+        },
         { status: 502 },
       );
     }
