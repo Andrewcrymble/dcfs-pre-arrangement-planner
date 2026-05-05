@@ -385,6 +385,21 @@ export async function generateEstimatePdf(
   }
 
   if (disbursementRows.length > 0) {
+    // Keep the disbursement section together. The closing italic note
+    // and subtotal refer to the table directly above them — splitting
+    // them across pages leaves a context-less line at the top of the
+    // next page (e.g. "These are estimated third-party costs and may
+    // change." floating alone with no table in sight).
+    const disbSectionEstimate =
+      16 /* heading */ +
+      26 /* table header row */ +
+      36 * disbursementRows.length /* multi-line body rows */ +
+      40 /* italic note + bold subtotal */;
+    if (y + disbSectionEstimate > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...NAVY);
