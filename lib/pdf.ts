@@ -176,7 +176,7 @@ export async function generateEstimatePdf(
     contentWidth,
   );
   doc.text(openingLines, margin, y);
-  y += openingLines.length * 16 + 18;
+  y += openingLines.length * 16 + 6;
 
   // Headline price box — same brand-green band as the on-screen Total
   // tile, scaled down to fit on the cover letter alongside a 5-year
