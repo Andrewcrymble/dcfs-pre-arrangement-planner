@@ -5,7 +5,6 @@ import { formatGBP } from "./sheets";
 import {
   PDF_DISCLAIMER,
   totalsForLines,
-  isDirectFuneralType,
   generateEstimateId,
   monthlyInstalmentOptions,
 } from "./estimate";
@@ -524,25 +523,6 @@ export async function generateEstimatePdf(
       }
       y += 8;
     }
-  }
-
-  // ---- Bundled-fees note for direct funerals
-  if (isDirectFuneralType(form.funeralType)) {
-    if (y > LETTERHEAD_BOTTOM_SAFE - 40) {
-      addPage();
-      y = LETTERHEAD_TOP_SAFE;
-    }
-    doc.setFillColor(243, 245, 250);
-    doc.rect(margin, y, contentWidth, 28, "F");
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(9);
-    doc.setTextColor(...NAVY);
-    doc.text(
-      "Cemetery / crematorium and doctor's fees are included in the direct package price.",
-      margin + 10,
-      y + 17,
-    );
-    y += 38;
   }
 
   // ---- Grand total band
