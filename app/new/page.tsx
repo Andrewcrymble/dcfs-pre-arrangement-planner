@@ -265,6 +265,9 @@ export default function Home() {
                 typeof snap.directPackageDiscount === "boolean"
                   ? snap.directPackageDiscount
                   : prev.directPackageDiscount,
+              arrangerNotes: Array.isArray(snap.arrangerNotes)
+                ? snap.arrangerNotes
+                : prev.arrangerNotes,
             }));
             return;
           } catch {
@@ -1560,6 +1563,11 @@ function SummaryActions({
       customDisbursements: form.customDisbursements,
       wishes: form.wishes,
       directPackageDiscount: form.directPackageDiscount,
+      // Arranger notes — staff log that follows the estimate. Persisted
+      // so reopening the record from the dashboard shows the same notes
+      // the original arranger left, even if a different staff member
+      // picks it up later.
+      arrangerNotes: form.arrangerNotes,
     };
     return {
       pdfBase64: uint8ArrayToBase64(pdfResult.bytes),
