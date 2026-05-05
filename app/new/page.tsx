@@ -1540,6 +1540,39 @@ function SummaryActions({
       });
   }, []);
 
+  // Build the same payload that goes to /api/upload-pdf (the Apps Script
+  // appends a row to the Estimates sheet from this — same payload from any
+  // entry point keeps the dashboard consistent regardless of which button
+  // staff used to generate the PDF).
+  const buildUploadBody = (
+    pdfResult: { bytes: Uint8Array; filename: string; estimateId: string },
+  ) => {
+    const totalsForUpload = totalsForLines(lines);
+    const selectionsSnapshot = {
+      customer: form.customer,
+      person: form.person,
+      funeralType: form.funeralType,
+      serviceChoice: form.serviceChoice,
+      coffin: form.coffin,
+      transport: form.transport,
+      additionalServices: form.additionalServices,
+      disbursements: form.disbursements,
+      customDisbursements: form.customDisbursements,
+      wishes: form.wishes,
+      directPackageDiscount: form.directPackageDiscount,
+    };
+    return {
+      pdfBase64: uint8ArrayToBase64(pdfResult.bytes),
+      filename: pdfResult.filename,
+      estimateId: pdfResult.estimateId,
+      customer: form.customer,
+      person:
+        form.customer.arrangementFor === "Someone else" ? form.person : null,
+      total: totalsForUpload.grandTotal,
+      selections: selectionsSnapshot,
+    };
+  };
+
   const handleDownload = async () => {
     if (downloading) return;
     setDownloading(true);
@@ -1550,6 +1583,19 @@ function SummaryActions({
         editRef || undefined,
         { arrangerName, apr },
       );
+      // Fire-and-forget save to the Estimates dashboard. We don't gate the
+      // success toast on the upload — the customer already has the PDF and
+      // the dashboard log is best-effort. Failures still surface in console
+      // for debugging without blocking the user.
+      try {
+        await fetch("/api/upload-pdf", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(buildUploadBody(result)),
+        });
+      } catch (err) {
+        console.error("Drive upload failed (download path):", err);
+      }
       setToast({
         kind: "success",
         text: `PDF downloaded · Ref ${result.estimateId}`,
@@ -1591,41 +1637,10 @@ function SummaryActions({
     let driveUrl: string | null = null;
     let driveError: string | null = null;
     try {
-      const pdfBase64 = uint8ArrayToBase64(pdfResult.bytes);
-      const totalsForUpload = totalsForLines(lines);
-      // Full form snapshot — stored on the Estimates row so reopening
-      // the record from the dashboard restores every selection (funeral
-      // type, coffin, transport, additional services, disbursements,
-      // wishes, custom charges, discount). arrangerNotes is intentionally
-      // NOT persisted here — those are an in-session staff log.
-      const selectionsSnapshot = {
-        customer: form.customer,
-        person: form.person,
-        funeralType: form.funeralType,
-        serviceChoice: form.serviceChoice,
-        coffin: form.coffin,
-        transport: form.transport,
-        additionalServices: form.additionalServices,
-        disbursements: form.disbursements,
-        customDisbursements: form.customDisbursements,
-        wishes: form.wishes,
-        directPackageDiscount: form.directPackageDiscount,
-      };
       const resp = await fetch("/api/upload-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          pdfBase64,
-          filename: pdfResult.filename,
-          estimateId: pdfResult.estimateId,
-          customer: form.customer,
-          person:
-            form.customer.arrangementFor === "Someone else"
-              ? form.person
-              : null,
-          total: totalsForUpload.grandTotal,
-          selections: selectionsSnapshot,
-        }),
+        body: JSON.stringify(buildUploadBody(pdfResult)),
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data?.url) {

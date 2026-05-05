@@ -10,11 +10,15 @@ import {
   monthlyInstalmentOptions,
 } from "./estimate";
 
-// PDF uses muted black/grey palette (more formal than the on-screen green
-// theme — the customer-facing document should read as understated).
+// PDF uses muted black/grey palette for headings and rules (formal),
+// with the brand green reserved for the prominent Total band so the
+// document mirrors the on-screen estimate summary at a glance.
 const NAVY: [number, number, number] = [40, 40, 40];   // charcoal — headings & table heads
 const GOLD: [number, number, number] = [150, 150, 150]; // medium grey — accent rules
 const SLATE: [number, number, number] = [110, 110, 110]; // muted grey — secondary text
+// Brand green — Tailwind navy-700 (#45761c). Used only for the Total band
+// so the headline figure pops the same way it does on screen.
+const BRAND_GREEN: [number, number, number] = [69, 118, 28];
 
 function formatPdfTimestamp(iso: string): string {
   try {
@@ -177,9 +181,10 @@ export async function generateEstimatePdf(
   doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
 
   // ============================================================
-  // ---- Page 2: Person being arranged for + Wishes (only if one
-  // exists — otherwise we skip the page entirely and the prices flow
-  // straight from the cover letter onto page 2).
+  // ---- Compute Person + Wishes presence now (drawn AFTER the prices,
+  // mirroring the on-screen summary order: Funeral Services →
+  // Third-party Costs → Wishes → Total). The cover letter sits on
+  // page 1; page 2 always starts with the prices breakdown.
   // ============================================================
   const hasPersonBlock =
     form.customer.arrangementFor === "Someone else" &&
@@ -189,119 +194,9 @@ export async function generateEstimatePdf(
     _w.officiant, _w.music, _w.readings, _w.flowers,
     _w.dressCode, _w.catering, _w.other,
   ].some((v) => typeof v === "string" && v.trim() !== "");
-  const hasPage2Content = hasPersonBlock || hasAnyWish;
 
-  if (hasPage2Content) {
-    addPage();
-  }
+  addPage();
   y = LETTERHEAD_TOP_SAFE;
-
-  // ---- Person being arranged for (only when "Someone else" + name supplied)
-  if (hasPersonBlock) {
-    y += 12;
-    if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
-      addPage();
-      y = LETTERHEAD_TOP_SAFE;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...NAVY);
-    doc.text("Person being arranged for", margin, y);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(40, 40, 40);
-    y += 16;
-
-    const personLines: [string, string][] = [
-      ["Full name", form.person.fullName],
-      ["Date of birth", form.person.dateOfBirth || "—"],
-      ["Relationship", form.person.relationship || "—"],
-      ["Address", form.person.address || "—"],
-      ["Doctor / GP", form.person.doctorName || "—"],
-      [
-        "Next of kin",
-        [form.person.nextOfKinName, form.person.nextOfKinPhone]
-          .filter((s) => s && s.trim() !== "")
-          .join(" · ") || "—",
-      ],
-    ];
-    for (const [label, value] of personLines) {
-      const wrapped = doc.splitTextToSize(value, contentWidth - 110);
-      const blockHeight = 14 * Math.max(1, wrapped.length);
-      if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
-        addPage();
-        y = LETTERHEAD_TOP_SAFE;
-      }
-      doc.setFont("helvetica", "bold");
-      doc.text(`${label}:`, margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(wrapped, margin + 110, y);
-      y += blockHeight;
-    }
-  }
-
-  // ---- Wishes & important information (shares page 2 with Person details)
-  {
-    const w = form.wishes;
-    const wishPairs: Array<[string, string]> = (
-      [
-        ["Minister / officiant", w.officiant],
-        ["Hymns & music", w.music],
-        ["Readings", w.readings],
-        ["Flowers / donations", w.flowers],
-        ["Dress code", w.dressCode],
-        ["Catering / wake", w.catering],
-        ["Anything else", w.other],
-      ] as Array<[string, string]>
-    ).filter(([, v]) => v && v.trim() !== "");
-
-    if (wishPairs.length > 0) {
-      y += 18;
-      if (y > LETTERHEAD_BOTTOM_SAFE - 60) {
-        addPage();
-        y = LETTERHEAD_TOP_SAFE;
-      }
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(...NAVY);
-      doc.text("Wishes & important information", margin, y);
-      y += 6;
-      doc.setDrawColor(...GOLD);
-      doc.setLineWidth(0.5);
-      doc.line(margin, y, margin + contentWidth, y);
-      y += 12;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(40, 40, 40);
-      for (const [label, value] of wishPairs) {
-        const wrapped = doc.splitTextToSize(value, contentWidth - 140);
-        const blockHeight = 14 * Math.max(1, wrapped.length);
-        if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
-          addPage();
-          y = LETTERHEAD_TOP_SAFE;
-        }
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...NAVY);
-        doc.text(`${label}:`, margin, y);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(40, 40, 40);
-        doc.text(wrapped, margin + 140, y);
-        y += blockHeight + 2;
-      }
-    }
-  }
-
-  // ============================================================
-  // ---- Prices and information page break
-  // ============================================================
-  // If we drew person/wishes on page 2, page-break to start the prices
-  // section on its own page. If page 2 was skipped (no person, no
-  // wishes) the prices section flows directly onto page 2 from the
-  // cover letter so the customer never sees a blank page.
-  if (hasPage2Content) {
-    addPage();
-    y = LETTERHEAD_TOP_SAFE;
-  }
 
   // Short intro line at the top of the prices page so the table
   // doesn't sit cold against the letterhead.
@@ -457,6 +352,109 @@ export async function generateEstimatePdf(
     y += 40;
   }
 
+  // ---- Person being arranged for (after prices, mirrors the on-screen
+  // order so the document reads top-to-bottom the same way as the screen
+  // summary: Funeral Services → Third-party Costs → Person → Wishes → Total)
+  if (hasPersonBlock) {
+    if (y > LETTERHEAD_BOTTOM_SAFE - 100) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text("Person being arranged for", margin, y);
+    y += 6;
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 12;
+
+    const personLines: [string, string][] = [
+      ["Full name", form.person.fullName],
+      ["Date of birth", form.person.dateOfBirth || "—"],
+      ["Relationship", form.person.relationship || "—"],
+      ["Address", form.person.address || "—"],
+      ["Doctor / GP", form.person.doctorName || "—"],
+      [
+        "Next of kin",
+        [form.person.nextOfKinName, form.person.nextOfKinPhone]
+          .filter((s) => s && s.trim() !== "")
+          .join(" · ") || "—",
+      ],
+    ];
+    doc.setFontSize(10);
+    for (const [label, value] of personLines) {
+      const wrapped = doc.splitTextToSize(value, contentWidth - 110);
+      const blockHeight = 14 * Math.max(1, wrapped.length);
+      if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+        addPage();
+        y = LETTERHEAD_TOP_SAFE;
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...NAVY);
+      doc.text(`${label}:`, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(40, 40, 40);
+      doc.text(wrapped, margin + 110, y);
+      y += blockHeight + 2;
+    }
+    y += 6;
+  }
+
+  // ---- Wishes & important information (after prices, before Total band)
+  if (hasAnyWish) {
+    const wishPairs: Array<[string, string]> = (
+      [
+        ["Minister / officiant", form.wishes.officiant],
+        ["Hymns & music", form.wishes.music],
+        ["Readings", form.wishes.readings],
+        ["Flowers / donations", form.wishes.flowers],
+        ["Dress code", form.wishes.dressCode],
+        ["Catering / wake", form.wishes.catering],
+        ["Anything else", form.wishes.other],
+      ] as Array<[string, string]>
+    ).filter(([, v]) => v && v.trim() !== "");
+
+    if (wishPairs.length > 0) {
+      if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
+        addPage();
+        y = LETTERHEAD_TOP_SAFE;
+      }
+      y += 4;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...NAVY);
+      doc.text("Wishes & important information", margin, y);
+      y += 6;
+      doc.setDrawColor(...GOLD);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, margin + contentWidth, y);
+      y += 12;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      for (const [label, value] of wishPairs) {
+        const wrapped = doc.splitTextToSize(value, contentWidth - 140);
+        const blockHeight = 14 * Math.max(1, wrapped.length);
+        if (y + blockHeight > LETTERHEAD_BOTTOM_SAFE) {
+          addPage();
+          y = LETTERHEAD_TOP_SAFE;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...NAVY);
+        doc.text(`${label}:`, margin, y);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(40, 40, 40);
+        doc.text(wrapped, margin + 140, y);
+        y += blockHeight + 2;
+      }
+      y += 8;
+    }
+  }
+
   // ---- Bundled-fees note for direct funerals
   if (isDirectFuneralType(form.funeralType)) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 40) {
@@ -481,13 +479,13 @@ export async function generateEstimatePdf(
     addPage();
     y = LETTERHEAD_TOP_SAFE;
   }
-  // Light grey band with dark text — print-safe and always renders.
-  // Was previously dark fill + white text which some viewers swallow.
-  doc.setFillColor(235, 235, 235);
+  // Brand-green band with white text — matches the on-screen Total tile so
+  // the headline figure draws the eye the same way it does in the wizard.
+  doc.setFillColor(...BRAND_GREEN);
   doc.rect(margin, y, contentWidth, 38, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.setTextColor(...NAVY);
+  doc.setTextColor(255, 255, 255);
   doc.text("Total estimated cost", margin + 14, y + 24);
   doc.setFontSize(15);
   doc.text(formatGBP(totals.grandTotal), pageWidth - margin - 14, y + 24, { align: "right" });
