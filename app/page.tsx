@@ -180,6 +180,65 @@ export default function DashboardPage() {
     }
   };
 
+  // Drop a "Follow up funeral Plan" event into the connected Outlook
+  // calendar on the date the staff member picks (default = 7 days out,
+  // 9am, 30 min). The estimate row carries everything we need —
+  // customer, phone, branch, PDF link — so the calendar entry is
+  // self-contained when it pops up later.
+  const addFollowUp = async (row: EstimateRow) => {
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 7);
+    const dd = String(defaultDate.getDate()).padStart(2, "0");
+    const mm = String(defaultDate.getMonth() + 1).padStart(2, "0");
+    const yy = defaultDate.getFullYear();
+    const dateInput = window.prompt(
+      "Follow-up date (DD/MM/YYYY)",
+      `${dd}/${mm}/${yy}`,
+    );
+    if (!dateInput) return;
+    const parsed = dateInput.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!parsed) {
+      setToast({ kind: "error", text: "Date must be DD/MM/YYYY" });
+      return;
+    }
+    const isoDate = `${parsed[3]}-${parsed[2]}-${parsed[1]}`;
+    const start = combineDateTime(isoDate, "09:00");
+    const end = addMinutesIso(start, 30);
+    const subject = `Follow up funeral Plan — ${row.Customer || "customer"}`;
+    const bodyHtml =
+      `<p>Reference: <b>${row.Ref}</b></p>` +
+      `<p>Phone: ${row.Phone || "—"}</p>` +
+      `<p>Branch: ${row.Branch || "—"}</p>` +
+      (row["PDF URL"]
+        ? `<p>PDF: <a href="${row["PDF URL"]}">${row["PDF URL"]}</a></p>`
+        : "");
+    setUpdatingRef(row.Ref);
+    try {
+      const res = await fetch("/api/microsoft/event", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subject, start, end, bodyHtml }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      setToast({
+        kind: "success",
+        text: `Follow-up added to Outlook · ${dateInput}`,
+      });
+    } catch (err) {
+      setToast({
+        kind: "error",
+        text:
+          "Couldn't add follow-up — " +
+          (err instanceof Error ? err.message : "unknown error"),
+      });
+    } finally {
+      setUpdatingRef(null);
+    }
+  };
+
   const deleteRecord = async (ref: string, customer: string) => {
     if (!window.confirm(
       `Delete record for "${customer || ref}"? This removes it from the dashboard and the spreadsheet permanently. The PDF in Drive is NOT deleted.`,
@@ -436,6 +495,18 @@ export default function DashboardPage() {
               Mark sent to WG
             </button>
           )}
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              addFollowUp(row);
+            }}
+            className="rounded-md border border-navy-200 bg-white px-2.5 py-1 text-xs font-medium text-navy-800 transition hover:bg-navy-50 disabled:opacity-50"
+          >
+            Follow up
+          </button>
           {(status === STATUS_APPOINTMENT || status === STATUS_SENT_TO_WG) && (
             <button
               type="button"
