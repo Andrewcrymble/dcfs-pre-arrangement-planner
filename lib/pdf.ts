@@ -311,7 +311,19 @@ export async function generateEstimatePdf(
       },
       // autoTable creates its own pages when the table is long; restamp
       // the letterhead on those new pages so the branding never drops.
-      willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
+      // The callback fires for the INITIAL page too — re-stamping there
+      // would cover the addressed-letter header we just drew, so we
+      // skip the first invocation by tracking the start page.
+      willDrawPage: ((startPage) => () => {
+        // @ts-expect-error jsPDF internal page lookup
+        const current = doc.internal.getCurrentPageInfo().pageNumber;
+        if (current > startPage) {
+          drawLetterhead(doc, letterhead, pageWidth, pageHeight);
+        }
+      })(
+        // @ts-expect-error jsPDF internal page lookup
+        doc.internal.getCurrentPageInfo().pageNumber,
+      ),
     });
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
@@ -371,9 +383,19 @@ export async function generateEstimatePdf(
         top: LETTERHEAD_TOP_SAFE,
         bottom: pageHeight - LETTERHEAD_BOTTOM_SAFE,
       },
-      // autoTable creates its own pages when the table is long; restamp
-      // the letterhead on those new pages so the branding never drops.
-      willDrawPage: () => drawLetterhead(doc, letterhead, pageWidth, pageHeight),
+      // Same continuation-only re-stamp pattern as the funeral table —
+      // initial page already has the letterhead and any preamble text,
+      // so we mustn't draw the PNG over it.
+      willDrawPage: ((startPage) => () => {
+        // @ts-expect-error jsPDF internal page lookup
+        const current = doc.internal.getCurrentPageInfo().pageNumber;
+        if (current > startPage) {
+          drawLetterhead(doc, letterhead, pageWidth, pageHeight);
+        }
+      })(
+        // @ts-expect-error jsPDF internal page lookup
+        doc.internal.getCurrentPageInfo().pageNumber,
+      ),
     });
     // @ts-expect-error autoTable adds lastAutoTable to the doc
     y = doc.lastAutoTable.finalY + 8;
