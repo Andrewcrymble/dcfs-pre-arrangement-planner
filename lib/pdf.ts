@@ -154,6 +154,15 @@ export async function generateEstimatePdf(
     return yh + 28;
   };
 
+  // Computed up-front so the cover letter can show the headline figure
+  // (and 5-year monthly equivalent) in a summary box. Re-used later in
+  // the prices section without re-walking the lines array.
+  const totals = totalsForLines(lines);
+  const fiveYearOption = monthlyInstalmentOptions(
+    totals.grandTotal,
+    options.apr,
+  ).find((o) => o.months === 60);
+
   let y = drawAddressedHeader();
 
   // Opening line — names the person being arranged for when applicable
@@ -169,6 +178,44 @@ export async function generateEstimatePdf(
   doc.text(openingLines, margin, y);
   y += openingLines.length * 16 + 18;
 
+  // Headline price box — same brand-green band as the on-screen Total
+  // tile, scaled down to fit on the cover letter alongside a 5-year
+  // monthly equivalent so the customer sees the bottom line straight
+  // away without flipping to the prices page.
+  if (totals.grandTotal > 0 && fiveYearOption) {
+    const boxHeight = 56;
+    doc.setFillColor(...BRAND_GREEN);
+    doc.rect(margin, y, contentWidth, boxHeight, "F");
+    doc.setTextColor(255, 255, 255);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Plan total", margin + 14, y + 22);
+    doc.setFontSize(15);
+    doc.text(
+      formatGBP(totals.grandTotal),
+      pageWidth - margin - 14,
+      y + 22,
+      { align: "right" },
+    );
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("5 years monthly", margin + 14, y + 44);
+    doc.setFont("helvetica", "bold");
+    doc.text(
+      `${formatGBP(fiveYearOption.monthly)} / month`,
+      pageWidth - margin - 14,
+      y + 44,
+      { align: "right" },
+    );
+
+    y += boxHeight + 18;
+    doc.setTextColor(40, 40, 40);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+  }
+
   // Closing courtesy line
   doc.text(
     "If we can be of any further assistance, please do not hesitate to contact us.",
@@ -180,8 +227,9 @@ export async function generateEstimatePdf(
   // Sign-off
   doc.text("Yours sincerely,", margin, y);
   y += 56; // signature gap
-  doc.setFont("helvetica", "bold");
+  doc.setFont("helvetica", "italic");
   doc.text(options.arrangerName || "David Crymble & Sons", margin, y);
+  doc.setFont("helvetica", "normal");
 
   // ============================================================
   // ---- Compute Person + Wishes presence now (drawn AFTER the prices,
@@ -227,8 +275,6 @@ export async function generateEstimatePdf(
       l.item_name + (l.description ? `\n${l.description}` : ""),
       formatGBP(l.price),
     ]);
-
-  const totals = totalsForLines(lines);
 
   if (funeralRows.length > 0) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
