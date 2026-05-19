@@ -6,9 +6,12 @@
 // changes, edit HEADSTONE_APP_URL below (or override via the
 // NEXT_PUBLIC_HEADSTONE_APP_URL env var in Vercel).
 
+// Point directly at the HTTPS subdomain — the github.io URL just
+// 301-redirects here, and the redirect lands on plain http which the
+// browser then refuses to embed (mixed content) inside our HTTPS app.
 const HEADSTONE_APP_URL =
   process.env.NEXT_PUBLIC_HEADSTONE_APP_URL ||
-  "https://andrewcrymble.github.io/dcfs-memorial-tracker/";
+  "https://tracker.crymbleandsons.com/";
 
 export default function HeadstonesPage() {
   return (
