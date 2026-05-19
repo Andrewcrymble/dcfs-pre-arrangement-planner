@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import SignOutButton from "@/components/SignOutButton";
+import PrimaryNav from "@/components/PrimaryNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -54,46 +55,14 @@ export default async function RootLayout({
                   </p>
                 )}
                 {session && (
-                  <nav className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-mist-100/90 sm:mt-1 sm:justify-end">
-                    <a href="/" className="underline-offset-2 hover:text-white hover:underline">
-                      Dashboard
-                    </a>
-                    <a
-                      href="/new"
-                      className="underline-offset-2 hover:text-white hover:underline"
-                    >
-                      New estimate
-                    </a>
-                    <a
-                      href="/calculator"
-                      className="underline-offset-2 hover:text-white hover:underline"
-                    >
-                      Calculator
-                    </a>
-                    <a
-                      href="/change-password"
-                      className="underline-offset-2 hover:text-white hover:underline"
-                    >
-                      Change password
-                    </a>
-                    {process.env.NEXT_PUBLIC_SHEETS_EDIT_URL && (
-                      <a
-                        href={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline-offset-2 hover:text-white hover:underline"
-                      >
-                        Edit pricing ↗
-                      </a>
-                    )}
-                  </nav>
+                  <PrimaryNav sheetsEditUrl={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL} />
                 )}
               </div>
             </div>
           </header>
 
           <main className="flex-1">
-            <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">{children}</div>
+            <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">{children}</div>
           </main>
 
           <footer className="border-t border-mist-200 bg-white">
