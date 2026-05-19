@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { saveDraft, loadDraft, clearDraft, timeSince } from "@/lib/draft";
 import ProgressBar from "@/components/ProgressBar";
 import StepNav from "@/components/StepNav";
 import RunningTotal from "@/components/RunningTotal";
@@ -210,6 +211,15 @@ export default function Home() {
   // PDF/WhatsApp pipeline runs (Apps Script's upload action upserts on Ref).
   const [editRef, setEditRef] = useState<string | null>(null);
 
+  // ---- Draft persistence ----
+  // Form state auto-saves to localStorage so the arranger can close
+  // the tab mid-wizard and resume on the same device. Cleared once
+  // the final PDF is generated. Skipped entirely when editing an
+  // existing estimate (?ref=DCFS-…) — that data comes from the sheet.
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<{ savedAt: string } | null>(null);
+  const draftChecked = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     fetchPricing().then((res) => {
@@ -333,6 +343,61 @@ export default function Home() {
   const updatePerson = (patch: Partial<Person>) =>
     setForm((f) => ({ ...f, person: { ...f.person, ...patch } }));
 
+  // Draft: on first mount when not editing an existing estimate, check
+  // localStorage for a saved draft and surface a resume banner.
+  useEffect(() => {
+    if (draftChecked.current) return;
+    if (typeof window === "undefined") return;
+    // Wait until we know whether we're editing — editRef is set
+    // synchronously from the URL on mount above.
+    draftChecked.current = true;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ref")) return; // editing — skip draft
+    const draft = loadDraft();
+    if (draft) {
+      setResumePrompt({ savedAt: draft.savedAt });
+    }
+  }, []);
+
+  // Draft: auto-save form changes (debounced ~1s). Skipped while the
+  // resume prompt is up (user hasn't decided yet) and while editing an
+  // existing estimate.
+  useEffect(() => {
+    if (resumePrompt) return;
+    if (editRef) return;
+    // Skip the truly-empty initial state — saving an unused empty form
+    // would mask any legitimately-stored draft from previous sessions.
+    const hasAnyInput =
+      form.customer.fullName.trim() !== "" ||
+      form.customer.telephone.trim() !== "" ||
+      form.customer.email.trim() !== "" ||
+      form.customer.address.trim() !== "" ||
+      form.funeralType !== "" ||
+      form.serviceChoice !== "" ||
+      form.coffin !== "";
+    if (!hasAnyInput) return;
+    const t = setTimeout(() => {
+      const rec = saveDraft(form);
+      if (rec) setDraftSavedAt(rec.savedAt);
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [form, resumePrompt, editRef]);
+
+  const resumeDraft = () => {
+    const d = loadDraft();
+    if (d) {
+      setForm(d.form);
+      setDraftSavedAt(d.savedAt);
+    }
+    setResumePrompt(null);
+  };
+
+  const startFresh = () => {
+    clearDraft();
+    setResumePrompt(null);
+    setDraftSavedAt(null);
+  };
+
   const goNext = () => setStep((s) => Math.min(s + 1, stepKeys.length - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
@@ -340,10 +405,12 @@ export default function Home() {
     list.includes(name) ? list.filter((x) => x !== name) : [...list, name];
 
   // ---- Step gating
+  // Email is intentionally NOT required — many customers prefer phone
+  // contact only. Name + telephone + branch + arrangement-for are the
+  // minimum we need to follow up.
   const customerValid =
     form.customer.fullName.trim() !== "" &&
     form.customer.telephone.trim() !== "" &&
-    form.customer.email.trim() !== "" &&
     form.customer.branch !== "" &&
     form.customer.arrangementFor !== "";
 
@@ -399,7 +466,49 @@ export default function Home() {
 
       <ProgressBar current={safeStep} total={stepKeys.length} labels={stepLabels} />
 
-      <div className="rounded-2xl bg-white p-5 shadow-soft sm:p-8">
+      {resumePrompt && (
+        <div className="mt-4 rounded-xl border border-gold-200 bg-gold-50 p-4 text-sm text-navy-900">
+          <p>
+            You have a saved draft from{" "}
+            <span className="font-semibold">{timeSince(resumePrompt.savedAt)}</span>.
+            Pick up where you left off, or start a fresh estimate?
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={resumeDraft}
+              className="rounded-md bg-navy-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-navy-800"
+            >
+              Resume draft
+            </button>
+            <button
+              type="button"
+              onClick={startFresh}
+              className="rounded-md border border-mist-200 bg-white px-3 py-1.5 text-xs font-semibold text-navy-800 hover:bg-mist-100"
+            >
+              Start fresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!editRef && !resumePrompt && (
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="text-mist-400">
+            {draftSavedAt
+              ? `Draft saved ${timeSince(draftSavedAt)}`
+              : "Drafts auto-save as you go"}
+          </span>
+          <a
+            href="/"
+            className="text-mist-400 underline-offset-2 hover:text-navy-700 hover:underline"
+          >
+            Save &amp; exit →
+          </a>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-soft sm:p-8">
         {stepKey === "customer" && (
           <StepCustomer form={form} update={updateCustomer} />
         )}
@@ -587,7 +696,7 @@ function StepCustomer({
           />
         </div>
         <div>
-          <label className="field-label">Email *</label>
+          <label className="field-label">Email <span className="text-mist-400 font-normal">(optional)</span></label>
           <input
             className="field-input"
             type="email"
@@ -1620,6 +1729,10 @@ function SummaryActions({
         kind: "success",
         text: `PDF downloaded · Ref ${result.estimateId}`,
       });
+      // Estimate finalised — drop the in-flight wizard draft so the
+      // next /new visit starts clean.
+      clearDraft();
+      setDraftSavedAt(null);
     } catch (err) {
       console.error(err);
       setToast({
@@ -1771,6 +1884,10 @@ function SummaryActions({
           ? `Sent · Ref ${pdfResult.estimateId} · PDF link in message${followUpNote}`
           : `Sent · Ref ${pdfResult.estimateId}${driveError ? ` · (Drive: ${driveError})` : ""}${followUpNote}`,
       });
+      // Estimate is out the door — drop the in-flight wizard draft so
+      // the next /new visit starts clean.
+      clearDraft();
+      setDraftSavedAt(null);
     } catch (err) {
       console.error("WhatsApp send failed:", err);
       setToast({

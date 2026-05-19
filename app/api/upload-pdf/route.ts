@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePhoneForSheet } from "@/lib/phoneFormat";
 
 // Server-side proxy to a Google Apps Script web app that stores the PDF in
 // our Drive folder and returns a shareable link. The shared secret stays on
@@ -19,6 +20,28 @@ export async function POST(req: Request) {
   if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
     return NextResponse.json({ error: "pdfBase64 required" }, { status: 400 });
   }
+
+  // Pre-format phone fields with a leading apostrophe so Sheets keeps
+  // them as text. Without this the leading 0 of UK mobile numbers gets
+  // stripped when the cell is interpreted as numeric.
+  const normalizedCustomer =
+    customer && typeof customer === "object"
+      ? {
+          ...(customer as Record<string, unknown>),
+          telephone: normalizePhoneForSheet(
+            (customer as { telephone?: unknown }).telephone,
+          ),
+        }
+      : customer;
+  const normalizedPerson =
+    person && typeof person === "object"
+      ? {
+          ...(person as Record<string, unknown>),
+          nextOfKinPhone: normalizePhoneForSheet(
+            (person as { nextOfKinPhone?: unknown }).nextOfKinPhone,
+          ),
+        }
+      : person;
 
   const url = process.env.DRIVE_UPLOAD_URL;
   const secret = process.env.DRIVE_UPLOAD_SECRET;
@@ -41,8 +64,8 @@ export async function POST(req: Request) {
         // Estimate metadata — Apps Script appends a row to the Estimates
         // sheet using these. Apps Script tolerates them being absent.
         estimateId,
-        customer,
-        person,
+        customer: normalizedCustomer,
+        person: normalizedPerson,
         total,
         // Full form snapshot (JSON) so the wizard can restore every
         // selection — funeral type, coffin, transport, additional

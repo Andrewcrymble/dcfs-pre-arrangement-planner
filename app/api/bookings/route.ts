@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateEstimateId } from "@/lib/estimate";
+import { normalizePhoneForSheet } from "@/lib/phoneFormat";
 
 // Creates a placeholder Estimates row with status="Appointment" — used
 // when staff books a customer in over the phone before the in-person
@@ -44,7 +45,11 @@ export async function POST(req: Request) {
         secret,
         action: "book_appointment",
         ref,
-        customer,
+        customer: {
+          ...customer,
+          // Keep the leading 0 of UK mobiles when Sheets stores the row.
+          telephone: normalizePhoneForSheet(customer.telephone),
+        },
         appointmentDate,
       }),
       cache: "no-store",
