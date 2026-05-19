@@ -137,6 +137,18 @@ export async function generateEstimatePdf(
         yh += 14 * Math.max(1, wrapped.length);
       }
     }
+    if (form.customer.councilDistrict) {
+      doc.setFontSize(9);
+      doc.setTextColor(...SLATE);
+      doc.text(
+        `${form.customer.councilDistrict} resident`,
+        margin,
+        yh,
+      );
+      yh += 12;
+      doc.setFontSize(11);
+      doc.setTextColor(40, 40, 40);
+    }
     doc.setFontSize(10);
     doc.setTextColor(...SLATE);
     doc.text(`Our Reference: ${estimateId}`, pageWidth - margin, LETTERHEAD_TOP_SAFE + 10, {

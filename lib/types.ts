@@ -34,6 +34,11 @@ export interface CustomerDetails {
   address: string;
   branch: Branch | "";
   arrangementFor: ArrangementFor | "";
+  // Looked up live from the postcode embedded in `address` via
+  // postcodes.io. Shown in the wizard ("Belfast resident") and on the
+  // PDF so the arranger knows which council's resident rate applies.
+  // Optional — empty when no postcode has been detected yet.
+  councilDistrict?: string;
 }
 
 // Details about the person the plan is being arranged for. Only collected

@@ -17,6 +17,7 @@ import {
 } from "@/lib/estimate";
 import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
+import PostcodeCouncil from "@/components/PostcodeCouncil";
 import type {
   ArrangerNote,
   CustomDisbursement,
@@ -101,6 +102,7 @@ const EMPTY_FORM: FormState = {
     address: "",
     branch: "",
     arrangementFor: "",
+    councilDistrict: "",
   },
   person: EMPTY_PERSON,
   funeralType: "",
@@ -601,6 +603,10 @@ function StepCustomer({
             value={c.address}
             onChange={(e) => update({ address: e.target.value })}
             autoComplete="street-address"
+          />
+          <PostcodeCouncil
+            address={c.address}
+            onCouncilChange={(district) => update({ councilDistrict: district })}
           />
         </div>
       </div>
@@ -1207,6 +1213,12 @@ function StepSummary({
           <SummaryRow label="Branch" value={form.customer.branch} />
           <SummaryRow label="Arrangement for" value={form.customer.arrangementFor} />
           <SummaryRow label="Address" value={form.customer.address} />
+          {form.customer.councilDistrict && (
+            <SummaryRow
+              label="Council district"
+              value={`${form.customer.councilDistrict} resident`}
+            />
+          )}
         </dl>
       </section>
 
