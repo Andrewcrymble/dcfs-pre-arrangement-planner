@@ -94,7 +94,10 @@ export default function HeadstoneEditorPage() {
         if (!oRes.ok) throw new Error(oData?.error || `HTTP ${oRes.status}`);
         if (cancelled) return;
         setPriceBook(pbData?.priceBook || {});
-        const list: HeadstoneOrder[] = Array.isArray(oData?.orders)
+        // Treat the orders payload as untrusted JSON — normalizeIncoming
+        // is the boundary that coerces it into HeadstoneOrder shape, so
+        // upstream the items are best typed as plain records.
+        const list: Record<string, unknown>[] = Array.isArray(oData?.orders)
           ? oData.orders
           : [];
         const found = list.find((o) => o.orderId === id);
