@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import SignOutButton from "@/components/SignOutButton";
 import PrimaryNav from "@/components/PrimaryNav";
+import PostcodeQuickLookup from "@/components/PostcodeQuickLookup";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,31 +34,38 @@ export default async function RootLayout({
       <body>
         <div className="min-h-screen flex flex-col">
           <header className="bg-navy-600 text-white">
-            <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:px-6 sm:py-5">
-              <div>
-                <p className="heading-serif text-2xl leading-tight sm:text-3xl">
-                  David Crymble &amp; Sons
-                </p>
-                <p className="text-xs uppercase tracking-[0.2em] text-gold-300 sm:text-sm">
-                  Funeral Directors
-                </p>
-              </div>
-              <div className="text-sm text-mist-100 sm:text-right">
-                <p className="hidden sm:block">Woodstock Road · Finaghy</p>
-                <p className="hidden text-gold-300 sm:block">
-                  {process.env.NEXT_PUBLIC_BUSINESS_PHONE || "028 9066 7784"}
-                </p>
-                {session && (
-                  <p className="text-xs text-mist-100/80 sm:mt-1">
-                    Signed in as <span className="font-semibold">{session.name}</span>
-                    {" · "}
-                    <SignOutButton />
+            <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+                <div>
+                  <p className="heading-serif text-2xl leading-tight sm:text-3xl">
+                    David Crymble &amp; Sons
                   </p>
-                )}
-                {session && (
-                  <PrimaryNav sheetsEditUrl={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL} />
-                )}
+                  <p className="text-xs uppercase tracking-[0.2em] text-gold-300 sm:text-sm">
+                    Funeral Directors
+                  </p>
+                </div>
+                <div className="text-sm text-mist-100 sm:text-right">
+                  <p className="hidden sm:block">Woodstock Road · Finaghy</p>
+                  <p className="hidden text-gold-300 sm:block">
+                    {process.env.NEXT_PUBLIC_BUSINESS_PHONE || "028 9066 7784"}
+                  </p>
+                  {session && (
+                    <p className="text-xs text-mist-100/80 sm:mt-1">
+                      Signed in as <span className="font-semibold">{session.name}</span>
+                      {" · "}
+                      <SignOutButton />
+                    </p>
+                  )}
+                  {session && (
+                    <PrimaryNav sheetsEditUrl={process.env.NEXT_PUBLIC_SHEETS_EDIT_URL} />
+                  )}
+                </div>
               </div>
+              {session && (
+                <div className="mt-3 border-t border-white/10 pt-3">
+                  <PostcodeQuickLookup />
+                </div>
+              )}
             </div>
           </header>
 
