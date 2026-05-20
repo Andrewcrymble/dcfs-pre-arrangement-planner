@@ -768,10 +768,14 @@ export async function generateEstimatePdf(
     doc.setFontSize(11);
     doc.setTextColor(...NAVY);
     doc.text("Notes from us", margin, y);
-    y += 6;
-    doc.setDrawColor(...GOLD);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, margin + contentWidth, y);
+    // Red underline under the title text itself (not a full-width rule
+    // like the other section headings) — draws the eye to the customer-
+    // facing notes section.
+    const titleWidth = doc.getTextWidth("Notes from us");
+    y += 3;
+    doc.setDrawColor(180, 30, 30);
+    doc.setLineWidth(0.8);
+    doc.line(margin, y, margin + titleWidth, y);
     y += 14;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
