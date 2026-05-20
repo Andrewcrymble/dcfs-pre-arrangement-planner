@@ -1731,24 +1731,50 @@ function StepSummary({
         </div>
       </section>
 
-      <section className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-mist-200 bg-mist-50 px-5 py-3">
-        <div>
-          <p className="text-sm font-medium text-navy-900">
-            Show finance options (Plan with Grace)
+      <section
+        className={`mt-5 flex items-center justify-between gap-4 rounded-xl border-2 px-5 py-4 transition ${
+          form.showFinanceOptions
+            ? "border-navy-300 bg-navy-50"
+            : "border-amber-300 bg-amber-50"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-semibold text-navy-900">
+            Plan with Grace finance options
           </p>
-          <p className="text-xs text-mist-400">
-            Off = no deposit field, no monthly instalments, no With Grace
-            partnership text on the PDF — just the total.
+          <p className="mt-0.5 text-xs text-mist-400">
+            {form.showFinanceOptions
+              ? "ON — deposit field, monthly instalments, and With Grace partnership text appear on the PDF."
+              : "OFF — none of the finance content appears. Customer sees the total only."}
           </p>
         </div>
-        <label className="inline-flex cursor-pointer items-center">
-          <input
-            type="checkbox"
-            className="h-4 w-4 cursor-pointer accent-navy-700"
-            checked={form.showFinanceOptions}
-            onChange={(e) => setShowFinanceOptions(e.target.checked)}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={form.showFinanceOptions}
+          onClick={() => setShowFinanceOptions(!form.showFinanceOptions)}
+          className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer items-center rounded-full border-2 transition ${
+            form.showFinanceOptions
+              ? "border-navy-700 bg-navy-600"
+              : "border-mist-300 bg-mist-200"
+          }`}
+        >
+          <span
+            className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition ${
+              form.showFinanceOptions ? "translate-x-8" : "translate-x-0.5"
+            }`}
           />
-        </label>
+          <span className="sr-only">
+            {form.showFinanceOptions ? "Turn off finance options" : "Turn on finance options"}
+          </span>
+        </button>
+        <span
+          className={`hidden text-sm font-semibold sm:inline ${
+            form.showFinanceOptions ? "text-navy-700" : "text-amber-700"
+          }`}
+        >
+          {form.showFinanceOptions ? "ON" : "OFF"}
+        </span>
       </section>
 
       {form.showFinanceOptions && totals.grandTotal > 0 && (
