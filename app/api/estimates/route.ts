@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePhoneForSheet } from "@/lib/phoneFormat";
 
 // Helper that hits the Apps Script web app with a given action+payload and
 // returns the parsed JSON response. Centralises the "is Drive configured?"
@@ -52,6 +53,55 @@ export async function GET(req: Request) {
   const { data, error, status } = await callAppsScript("list_estimates");
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { estimates: [] });
+}
+
+// Save (or update) an in-progress estimate as a Draft. Mirrors the row
+// shape of the upload-pdf path but without a PDF — Apps Script appends or
+// upserts the row by Ref. The wizard's "Save & exit" button calls this so
+// the arranger can resume the same estimate from any device by opening the
+// draft card on the dashboard.
+export async function POST(req: Request) {
+  let body: Record<string, unknown> = {};
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { estimateId, customer, person, total, selections } = body;
+  if (typeof estimateId !== "string" || estimateId === "") {
+    return NextResponse.json({ error: "estimateId required" }, { status: 400 });
+  }
+
+  // Same phone normalisation the PDF upload path uses — keeps the leading
+  // 0 on UK mobile numbers when Apps Script writes them to the sheet.
+  const normalizedCustomer =
+    customer && typeof customer === "object"
+      ? {
+          ...(customer as Record<string, unknown>),
+          telephone: normalizePhoneForSheet(
+            (customer as { telephone?: unknown }).telephone,
+          ),
+        }
+      : customer;
+  const normalizedPerson =
+    person && typeof person === "object"
+      ? {
+          ...(person as Record<string, unknown>),
+          nextOfKinPhone: normalizePhoneForSheet(
+            (person as { nextOfKinPhone?: unknown }).nextOfKinPhone,
+          ),
+        }
+      : person;
+
+  const { data, error, status } = await callAppsScript("save_draft", {
+    estimateId,
+    customer: normalizedCustomer,
+    person: normalizedPerson,
+    total,
+    selections,
+  });
+  if (error) return NextResponse.json({ error }, { status });
+  return NextResponse.json(data ?? { ok: true, ref: estimateId });
 }
 
 export async function PATCH(req: Request) {

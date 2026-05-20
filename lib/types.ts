@@ -92,6 +92,18 @@ export interface FormState {
   wishes: Wishes;
   directPackageDiscount: boolean;
   arrangerNotes: ArrangerNote[];
+  // Cash paid up-front (deposit or any other amount taken at the time the
+  // estimate is prepared). Deducted from the grand total before the
+  // instalment APR calculation, and shown on the cover letter PDF.
+  deposit: number;
+  // Free-text notes the arranger writes for the customer. Distinct from
+  // `arrangerNotes` (staff-only) — these DO appear on the customer PDF.
+  notesForClient: string;
+  // Whether to show finance / monthly-plan content on the estimate. When
+  // false, the deposit input, monthly instalment table, and the "Plan with
+  // Grace" partnership boilerplate are all suppressed from the on-screen
+  // summary and the PDF. Defaults to true (legacy behaviour).
+  showFinanceOptions: boolean;
 }
 
 export interface SelectedLine {

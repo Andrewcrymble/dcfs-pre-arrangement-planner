@@ -18,6 +18,7 @@ import {
 } from "@/lib/estimate";
 import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
+import { generateEstimateId } from "@/lib/estimate";
 import PostcodeCouncil from "@/components/PostcodeCouncil";
 import type {
   ArrangerNote,
@@ -42,6 +43,7 @@ type StepKey =
   | "additional"
   | "disbursements"
   | "wishes"
+  | "notesForClient"
   | "summary";
 
 const STEP_LABEL_MAP: Record<StepKey, string> = {
@@ -54,6 +56,7 @@ const STEP_LABEL_MAP: Record<StepKey, string> = {
   additional: "Additional services",
   disbursements: "Disbursements",
   wishes: "Wishes & info",
+  notesForClient: "Notes for client",
   summary: "Summary",
 };
 
@@ -67,6 +70,7 @@ function stepKeysFor(arrangementFor: string): StepKey[] {
     "additional",
     "disbursements",
     "wishes",
+    "notesForClient",
     "summary",
   ];
   if (arrangementFor === "Someone else") {
@@ -116,6 +120,9 @@ const EMPTY_FORM: FormState = {
   wishes: EMPTY_WISHES,
   directPackageDiscount: false,
   arrangerNotes: [],
+  deposit: 0,
+  notesForClient: "",
+  showFinanceOptions: true,
 };
 
 // Returns the local-time ISO string (no timezone suffix) for "9am, 7 days
@@ -217,6 +224,13 @@ export default function Home() {
   // the final PDF is generated. Skipped entirely when editing an
   // existing estimate (?ref=DCFS-…) — that data comes from the sheet.
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  // Set while the "Save & exit" button is awaiting the dashboard save.
+  // Disables the button so a slow network click can't double-fire.
+  const [savingAndExiting, setSavingAndExiting] = useState(false);
+  const [topToast, setTopToast] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
   const [resumePrompt, setResumePrompt] = useState<{ savedAt: string } | null>(null);
   const draftChecked = useRef(false);
 
@@ -280,6 +294,18 @@ export default function Home() {
               arrangerNotes: Array.isArray(snap.arrangerNotes)
                 ? snap.arrangerNotes
                 : prev.arrangerNotes,
+              deposit:
+                typeof snap.deposit === "number" && Number.isFinite(snap.deposit)
+                  ? snap.deposit
+                  : prev.deposit,
+              notesForClient:
+                typeof snap.notesForClient === "string"
+                  ? snap.notesForClient
+                  : prev.notesForClient,
+              showFinanceOptions:
+                typeof snap.showFinanceOptions === "boolean"
+                  ? snap.showFinanceOptions
+                  : prev.showFinanceOptions,
             }));
             return;
           } catch {
@@ -337,6 +363,14 @@ export default function Home() {
   // "Someone else" back to "Myself" while on the inserted person step).
   const safeStep = Math.min(step, stepKeys.length - 1);
   const stepKey = stepKeys[safeStep];
+
+  // When the step changes, drop the viewport scroll back to the top of the
+  // wizard card. Long steps (Wishes, Summary) otherwise leave the user
+  // landing halfway down the next screen, which feels disorienting.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [stepKey]);
 
   const updateCustomer = (patch: Partial<FormState["customer"]>) =>
     setForm((f) => ({ ...f, customer: { ...f.customer, ...patch } }));
@@ -396,6 +430,63 @@ export default function Home() {
     clearDraft();
     setResumePrompt(null);
     setDraftSavedAt(null);
+  };
+
+  // "Save & exit" — push the current wizard state to the dashboard as a
+  // Draft and send the arranger home. Re-uses `editRef` if we're already
+  // working on a saved record so the row upserts rather than duplicating;
+  // otherwise mints a new Ref. localStorage is cleared on success so we
+  // don't double-resume from both the sheet card and the local banner.
+  const saveAndExit = async () => {
+    if (savingAndExiting) return;
+    setSavingAndExiting(true);
+    try {
+      const ref = editRef || generateEstimateId();
+      // Same snapshot shape as the PDF upload path so the dashboard row
+      // and a future PDF generation agree on every field.
+      const selectionsSnapshot = {
+        customer: form.customer,
+        person: form.person,
+        funeralType: form.funeralType,
+        serviceChoice: form.serviceChoice,
+        coffin: form.coffin,
+        transport: form.transport,
+        additionalServices: form.additionalServices,
+        disbursements: form.disbursements,
+        customDisbursements: form.customDisbursements,
+        wishes: form.wishes,
+        directPackageDiscount: form.directPackageDiscount,
+        arrangerNotes: form.arrangerNotes,
+        deposit: form.deposit,
+        notesForClient: form.notesForClient,
+        showFinanceOptions: form.showFinanceOptions,
+      };
+      const res = await fetch("/api/estimates", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          estimateId: ref,
+          customer: form.customer,
+          person:
+            form.customer.arrangementFor === "Someone else" ? form.person : null,
+          total: totals.grandTotal,
+          selections: selectionsSnapshot,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      clearDraft();
+      setDraftSavedAt(null);
+      window.location.href = "/";
+    } catch (err) {
+      setTopToast({
+        kind: "error",
+        text:
+          "Couldn't save draft — " +
+          (err instanceof Error ? err.message : "unknown error"),
+      });
+      setSavingAndExiting(false);
+    }
   };
 
   const goNext = () => setStep((s) => Math.min(s + 1, stepKeys.length - 1));
@@ -492,23 +583,44 @@ export default function Home() {
         </div>
       )}
 
-      {!editRef && !resumePrompt && (
+      {!resumePrompt && (
         <div className="mt-3 flex items-center justify-between text-xs">
           <span className="text-mist-400">
-            {draftSavedAt
-              ? `Draft saved ${timeSince(draftSavedAt)}`
-              : "Drafts auto-save as you go"}
+            {editRef
+              ? `Editing ${editRef}`
+              : draftSavedAt
+                ? `Draft saved ${timeSince(draftSavedAt)}`
+                : "Drafts auto-save as you go"}
           </span>
-          <a
-            href="/"
-            className="text-mist-400 underline-offset-2 hover:text-navy-700 hover:underline"
+          <button
+            type="button"
+            onClick={saveAndExit}
+            disabled={savingAndExiting}
+            className="text-mist-400 underline-offset-2 hover:text-navy-700 hover:underline disabled:opacity-50"
           >
-            Save &amp; exit →
-          </a>
+            {savingAndExiting ? "Saving…" : "Save & exit →"}
+          </button>
         </div>
       )}
 
-      <div className="mt-4 rounded-2xl bg-white p-5 shadow-soft sm:p-8">
+      {topToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
+            topToast.kind === "success"
+              ? "bg-navy-700 text-white"
+              : "bg-red-600 text-white"
+          }`}
+        >
+          {topToast.text}
+        </div>
+      )}
+
+      <div
+        key={stepKey}
+        className="wizard-step-enter mt-4 rounded-2xl bg-white p-5 shadow-soft sm:p-8"
+      >
         {stepKey === "customer" && (
           <StepCustomer form={form} update={updateCustomer} />
         )}
@@ -622,11 +734,21 @@ export default function Home() {
             }
           />
         )}
+        {stepKey === "notesForClient" && (
+          <StepNotesForClient
+            value={form.notesForClient}
+            onChange={(text) => setForm((f) => ({ ...f, notesForClient: text }))}
+          />
+        )}
         {stepKey === "summary" && (
           <StepSummary
             form={form}
             lines={lines}
             totals={totals}
+            setDeposit={(amount) => setForm((f) => ({ ...f, deposit: amount }))}
+            setShowFinanceOptions={(on) =>
+              setForm((f) => ({ ...f, showFinanceOptions: on }))
+            }
             addArrangerNote={(note) =>
               setForm((f) => ({ ...f, arrangerNotes: [...f.arrangerNotes, note] }))
             }
@@ -642,7 +764,13 @@ export default function Home() {
         {stepKey === "customer" ? (
           <StepNav onNext={goNext} nextDisabled={!customerValid} hideBack />
         ) : stepKey === "summary" ? (
-          <SummaryActions form={form} lines={lines} onBack={goBack} editRef={editRef} />
+          <SummaryActions
+            form={form}
+            lines={lines}
+            onBack={goBack}
+            editRef={editRef}
+            onDraftConsumed={() => setDraftSavedAt(null)}
+          />
         ) : (
           <StepNav onBack={goBack} onNext={goNext} />
         )}
@@ -984,6 +1112,38 @@ function StepWishes({
   );
 }
 
+function StepNotesForClient({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+}) {
+  return (
+    <div>
+      <h2 className="heading-serif text-2xl text-navy-900 sm:text-3xl">
+        Notes for the client
+      </h2>
+      <p className="mt-1 text-mist-400">
+        Anything you'd like the customer to read on their estimate — a
+        thank-you, clarifications about choices, or next steps. These notes
+        appear on the customer-facing PDF (unlike the internal arranger log).
+      </p>
+
+      <div className="mt-6">
+        <label className="field-label">Notes</label>
+        <textarea
+          className="field-input min-h-[200px]"
+          placeholder="e.g. As discussed, we've left flowers open so the family can decide nearer the time. Please get in touch if you'd like to revisit any of the choices below."
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <p className="mt-1 text-xs text-mist-400">Optional — leave blank if there's nothing to add.</p>
+      </div>
+    </div>
+  );
+}
+
 function StepSingleChoice({
   title,
   description,
@@ -1262,18 +1422,29 @@ function StepSummary({
   form,
   lines,
   totals,
+  setDeposit,
+  setShowFinanceOptions,
   addArrangerNote,
   removeArrangerNote,
 }: {
   form: FormState;
   lines: ReturnType<typeof buildSelectedLines>;
   totals: ReturnType<typeof totalsForLines>;
+  setDeposit: (amount: number) => void;
+  setShowFinanceOptions: (on: boolean) => void;
   addArrangerNote: (note: ArrangerNote) => void;
   removeArrangerNote: (id: string) => void;
 }) {
   const apr = useInstalmentApr();
   const aprPct = apr * 100;
   const aprLabel = `${aprPct % 1 === 0 ? aprPct.toFixed(0) : aprPct.toFixed(2)}%`;
+  // Clamp the deposit to [0, grandTotal] before financing — a deposit larger
+  // than the total just zeroes out the financed amount, never goes negative.
+  const depositApplied = Math.max(
+    0,
+    Math.min(form.deposit || 0, totals.grandTotal),
+  );
+  const amountToFinance = Math.max(0, totals.grandTotal - depositApplied);
   const funeralLines = lines.filter((l) => l.category !== "disbursement");
   const disbLines = lines.filter((l) => l.category === "disbursement");
   const isDirect = isDirectFuneralType(form.funeralType);
@@ -1425,7 +1596,27 @@ function StepSummary({
         </div>
       </section>
 
-      {totals.grandTotal > 0 && (
+      <section className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-mist-200 bg-mist-50 px-5 py-3">
+        <div>
+          <p className="text-sm font-medium text-navy-900">
+            Show finance options (Plan with Grace)
+          </p>
+          <p className="text-xs text-mist-400">
+            Off = no deposit field, no monthly instalments, no With Grace
+            partnership text on the PDF — just the total.
+          </p>
+        </div>
+        <label className="inline-flex cursor-pointer items-center">
+          <input
+            type="checkbox"
+            className="h-4 w-4 cursor-pointer accent-navy-700"
+            checked={form.showFinanceOptions}
+            onChange={(e) => setShowFinanceOptions(e.target.checked)}
+          />
+        </label>
+      </section>
+
+      {form.showFinanceOptions && totals.grandTotal > 0 && (
         <section className="mt-5 rounded-xl border border-mist-200 bg-white p-5">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
             Monthly plan options — David Crymble &amp; Sons "With Grace"
@@ -1433,8 +1624,38 @@ function StepSummary({
           <p className="mt-1 text-xs text-mist-400">
             First 24 months interest-free. Beyond that, {aprLabel} APR is applied to the remaining balance.
           </p>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[200px_1fr] sm:items-end">
+            <div>
+              <label className="field-label">Deposit / paid today</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mist-400">£</span>
+                <input
+                  className="field-input pl-7"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={form.deposit > 0 ? String(form.deposit) : ""}
+                  placeholder="0.00"
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setDeposit(Number.isFinite(v) && v >= 0 ? v : 0);
+                  }}
+                />
+              </div>
+            </div>
+            {depositApplied > 0 && (
+              <p className="text-xs text-mist-400 sm:pb-3">
+                <span className="font-medium text-navy-800">{formatGBP(depositApplied)}</span> deducted —
+                financing <span className="font-medium text-navy-800">{formatGBP(amountToFinance)}</span>{" "}
+                of the {formatGBP(totals.grandTotal)} total.
+              </p>
+            )}
+          </div>
+
           <ul className="mt-3 divide-y divide-mist-200">
-            {monthlyInstalmentOptions(totals.grandTotal, apr).map((opt) => (
+            {monthlyInstalmentOptions(amountToFinance, apr).map((opt) => (
               <li
                 key={opt.months}
                 className="flex flex-col py-2 sm:flex-row sm:items-baseline sm:justify-between"
@@ -1629,11 +1850,15 @@ function SummaryActions({
   lines,
   onBack,
   editRef,
+  onDraftConsumed,
 }: {
   form: FormState;
   lines: ReturnType<typeof buildSelectedLines>;
   onBack: () => void;
   editRef: string | null;
+  // Notify the parent that the in-flight draft has been finalised (PDF
+  // downloaded or sent), so it can clear the "Draft saved X ago" indicator.
+  onDraftConsumed?: () => void;
 }) {
   const apr = useInstalmentApr();
   const [downloading, setDownloading] = useState(false);
@@ -1689,6 +1914,9 @@ function SummaryActions({
       // the original arranger left, even if a different staff member
       // picks it up later.
       arrangerNotes: form.arrangerNotes,
+      deposit: form.deposit,
+      notesForClient: form.notesForClient,
+      showFinanceOptions: form.showFinanceOptions,
     };
     return {
       pdfBase64: uint8ArrayToBase64(pdfResult.bytes),
@@ -1732,7 +1960,7 @@ function SummaryActions({
       // Estimate finalised — drop the in-flight wizard draft so the
       // next /new visit starts clean.
       clearDraft();
-      setDraftSavedAt(null);
+      onDraftConsumed?.();
     } catch (err) {
       console.error(err);
       setToast({
@@ -1887,7 +2115,7 @@ function SummaryActions({
       // Estimate is out the door — drop the in-flight wizard draft so
       // the next /new visit starts clean.
       clearDraft();
-      setDraftSavedAt(null);
+      onDraftConsumed?.();
     } catch (err) {
       console.error("WhatsApp send failed:", err);
       setToast({

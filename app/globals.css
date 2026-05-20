@@ -44,3 +44,26 @@ body {
     font-family: "Cormorant Garamond", Georgia, serif;
   }
 }
+
+/* Subtle fade-in for wizard step transitions — applied via the React key
+   on the step container so each new step re-mounts and replays the
+   animation. Keeps the overall layout shift minimal (just opacity + a
+   tiny lift) so the wizard feels continuous instead of snapping. */
+@keyframes wizardStepIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.wizard-step-enter {
+  animation: wizardStepIn 220ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wizard-step-enter {
+    animation: none;
+  }
+}

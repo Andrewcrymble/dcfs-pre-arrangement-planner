@@ -169,10 +169,24 @@ export async function generateEstimatePdf(
   // (and 5-year monthly equivalent) in a summary box. Re-used later in
   // the prices section without re-walking the lines array.
   const totals = totalsForLines(lines);
-  const fiveYearOption = monthlyInstalmentOptions(
-    totals.grandTotal,
-    options.apr,
-  ).find((o) => o.months === 60);
+  // Estimates can opt out of finance (cash sale, no Plan with Grace).
+  // Treats a missing field as ON to preserve legacy behaviour for older
+  // records that pre-date the toggle.
+  const showFinance = form.showFinanceOptions !== false;
+  // Deposit clamped to [0, grandTotal] — the financed amount can never
+  // be negative or larger than the total. All instalment options on this
+  // PDF (headline 5-year on the cover letter and the full table on the
+  // prices page) are computed off `amountToFinance` so a deposit visibly
+  // reduces every monthly figure.
+  const depositApplied = showFinance
+    ? Math.max(0, Math.min(form.deposit || 0, totals.grandTotal))
+    : 0;
+  const amountToFinance = Math.max(0, totals.grandTotal - depositApplied);
+  const fiveYearOption = showFinance
+    ? monthlyInstalmentOptions(amountToFinance, options.apr).find(
+        (o) => o.months === 60,
+      )
+    : undefined;
 
   let y = drawAddressedHeader();
 
@@ -189,42 +203,75 @@ export async function generateEstimatePdf(
   doc.text(openingLines, margin, y);
   y += openingLines.length * 16 + 6;
 
-  // Headline price box — same brand-green band as the on-screen Total
-  // tile, scaled down to fit on the cover letter alongside a 5-year
-  // monthly equivalent so the customer sees the bottom line straight
-  // away without flipping to the prices page.
-  if (totals.grandTotal > 0 && fiveYearOption) {
-    const boxHeight = 56;
-    doc.setFillColor(...BRAND_GREEN);
-    doc.rect(margin, y, contentWidth, boxHeight, "F");
-    doc.setTextColor(255, 255, 255);
+  // Headline figure — set as a serif headline between two hairline gold
+  // rules. Quieter than the previous brand-green fill, reads more like a
+  // private stationer's invoice than a marketing tile. The "5 years
+  // monthly" sub-line only appears when finance options are enabled.
+  if (totals.grandTotal > 0) {
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 22;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Plan total", margin + 14, y + 22);
-    doc.setFontSize(15);
+    // Plan total — small caps label, large serif figure
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...SLATE);
+    doc.text("PLAN TOTAL", margin, y);
+    doc.setFont("times", "normal");
+    doc.setFontSize(22);
+    doc.setTextColor(...NAVY);
     doc.text(
       formatGBP(totals.grandTotal),
-      pageWidth - margin - 14,
-      y + 22,
+      pageWidth - margin,
+      y + 4,
       { align: "right" },
     );
+    y += 28;
 
+    // 5-year monthly — secondary line in serif italic
+    if (fiveYearOption) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...SLATE);
+      doc.text("5 YEARS MONTHLY", margin, y);
+      doc.setFont("times", "italic");
+      doc.setFontSize(13);
+      doc.setTextColor(...NAVY);
+      doc.text(
+        `${formatGBP(fiveYearOption.monthly)} / month`,
+        pageWidth - margin,
+        y + 2,
+        { align: "right" },
+      );
+      y += 14;
+    }
+
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 18;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text("5 years monthly", margin + 14, y + 44);
-    doc.setFont("helvetica", "bold");
-    doc.text(
-      `${formatGBP(fiveYearOption.monthly)} / month`,
-      pageWidth - margin - 14,
-      y + 44,
-      { align: "right" },
-    );
+    doc.setTextColor(40, 40, 40);
 
-    y += boxHeight + 18;
+    // If a deposit has been taken, show it directly under the headline so
+    // the customer can see the financed amount that drives the monthly
+    // figure above. Skipped silently when no deposit is recorded.
+    if (depositApplied > 0) {
+      doc.setTextColor(40, 40, 40);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Paid today (deposit): ${formatGBP(depositApplied)}`, margin, y);
+      y += 14;
+      doc.setFont("helvetica", "bold");
+      doc.text(`Remaining to finance: ${formatGBP(amountToFinance)}`, margin, y);
+      y += 16;
+    }
+
     doc.setTextColor(40, 40, 40);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
+    y += 4;
   }
 
   // Closing courtesy line
@@ -564,21 +611,51 @@ export async function generateEstimatePdf(
     addPage();
     y = LETTERHEAD_TOP_SAFE;
   }
-  // Brand-green band with white text — matches the on-screen Total tile so
-  // the headline figure draws the eye the same way it does in the wizard.
-  doc.setFillColor(...BRAND_GREEN);
-  doc.rect(margin, y, contentWidth, 38, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(255, 255, 255);
-  doc.text("Total estimated cost", margin + 14, y + 24);
-  doc.setFontSize(15);
-  doc.text(formatGBP(totals.grandTotal), pageWidth - margin - 14, y + 24, { align: "right" });
-  y += 60;
+  // Total figure — serif headline between hairline gold rules, mirroring
+  // the cover-letter treatment. White background, navy text — quieter and
+  // more in keeping with a private estimate than a coloured marketing band.
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, margin + contentWidth, y);
+  y += 22;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...SLATE);
+  doc.text("TOTAL ESTIMATED COST", margin, y);
+  doc.setFont("times", "normal");
+  doc.setFontSize(22);
+  doc.setTextColor(...NAVY);
+  doc.text(formatGBP(totals.grandTotal), pageWidth - margin, y + 4, { align: "right" });
+  y += 14;
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, margin + contentWidth, y);
+  y += 22;
+  doc.setFont("helvetica", "normal");
+
+  // Deposit + remaining-to-finance rows immediately under the Total band —
+  // mirrors the deposit summary on the cover letter so a customer flipping
+  // straight to the prices page still sees what's been paid up-front and
+  // what the monthly options below are financing.
+  if (depositApplied > 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text("Paid today (deposit)", margin + 14, y);
+    doc.text(formatGBP(depositApplied), pageWidth - margin - 14, y, { align: "right" });
+    y += 16;
+    doc.setFont("helvetica", "bold");
+    doc.text("Remaining to finance", margin + 14, y);
+    doc.text(formatGBP(amountToFinance), pageWidth - margin - 14, y, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    y += 22;
+  }
 
   // ---- Monthly instalment options (1–5 years; 24-month interest-free
-  // window then 6% APR amortized on the remaining balance for longer terms)
-  if (totals.grandTotal > 0) {
+  // window then 6% APR amortized on the remaining balance for longer terms).
+  // Computed off `amountToFinance` so a deposit reduces every figure.
+  // Suppressed entirely when the estimate has opted out of finance options.
+  if (showFinance && amountToFinance > 0) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 160) {
       addPage();
       y = LETTERHEAD_TOP_SAFE;
@@ -606,7 +683,7 @@ export async function generateEstimatePdf(
     const aprPct = (options.apr ?? 0.06) * 100;
     const aprLabel = `${aprPct % 1 === 0 ? aprPct.toFixed(0) : aprPct.toFixed(2)}%`;
     const instalmentOptions = monthlyInstalmentOptions(
-      totals.grandTotal,
+      amountToFinance,
       options.apr,
     );
     for (const opt of instalmentOptions) {
@@ -667,6 +744,35 @@ export async function generateEstimatePdf(
   // Funeral arranger notes are intentionally NOT rendered on the PDF — they
   // are an internal staff log, not for the customer-facing estimate. They
   // remain visible in the on-screen Summary and in the mailto body.
+
+  // ---- Notes for the client (customer-facing free text from the wizard's
+  // "Notes for client" step). Distinct from `arrangerNotes` above. Skipped
+  // entirely when blank so older estimates without this field render the
+  // same as before.
+  const clientNotes =
+    typeof form.notesForClient === "string" ? form.notesForClient.trim() : "";
+  if (clientNotes) {
+    const noteBodyLines = doc.splitTextToSize(clientNotes, contentWidth);
+    const sectionHeight = noteBodyLines.length * 12 + 36;
+    if (y + sectionHeight > LETTERHEAD_BOTTOM_SAFE) {
+      addPage();
+      y = LETTERHEAD_TOP_SAFE;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text("Notes from us", margin, y);
+    y += 6;
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, margin + contentWidth, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    doc.text(noteBodyLines, margin, y);
+    y += noteBodyLines.length * 12 + 14;
+  }
 
   // ---- Disclaimer (sits inside the letterhead's safe zone — no custom footer
   // needed because the letterhead has its own bottom band with contact details
@@ -736,6 +842,12 @@ export async function generateEstimatePdf(
   }
   y += 10;
 
+  // "Why Choose Plan with Grace" benefits list + closing partnership
+  // paragraphs are part of the With Grace finance proposition. When the
+  // estimate has opted out, skip the entire block — the third-party Note
+  // above and the disclaimer below are generic and stay either way.
+  if (showFinance) {
+
   // Why Choose section
   if (y > LETTERHEAD_BOTTOM_SAFE - 80) {
     addPage();
@@ -802,6 +914,8 @@ export async function generateEstimatePdf(
     doc.text(paraLines, margin, y);
     y += blockHeight;
   }
+
+  } // end: if (showFinance)
 
   const safeName = (form.customer.fullName || "estimate")
     .replace(/[^a-z0-9]+/gi, "_")

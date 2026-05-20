@@ -28,6 +28,7 @@ interface MsStatus {
 const STATUS_QUOTED = "Quoted";
 const STATUS_APPOINTMENT = "Appointment";
 const STATUS_SENT_TO_WG = "Sent to WG";
+const STATUS_DRAFT = "Draft";
 
 // Combine a YYYY-MM-DD and HH:MM into an ISO string with no timezone — the
 // /api/microsoft/event endpoint adds the Europe/London timezone server-side.
@@ -361,16 +362,19 @@ export default function DashboardPage() {
   }, [estimates, search, branchFilter]);
 
   const cols = useMemo(() => {
+    const drafts: EstimateRow[] = [];
     const quoted: EstimateRow[] = [];
     const appts: EstimateRow[] = [];
     const sent: EstimateRow[] = [];
     for (const e of filtered) {
       const s = (e.Status || "").trim();
-      if (s === STATUS_SENT_TO_WG) sent.push(e);
+      if (s === STATUS_DRAFT) drafts.push(e);
+      else if (s === STATUS_SENT_TO_WG) sent.push(e);
       else if (s === STATUS_APPOINTMENT) appts.push(e);
       else quoted.push(e);
     }
     // Sort newest first within each column
+    drafts.sort((a, b) => (a.Created < b.Created ? 1 : -1));
     quoted.sort((a, b) => (a.Created < b.Created ? 1 : -1));
     appts.sort(
       (a, b) =>
@@ -383,16 +387,21 @@ export default function DashboardPage() {
       (a, b) =>
         (a["Sent to WG"] || a.Created) < (b["Sent to WG"] || b.Created) ? 1 : -1,
     );
-    return { quoted, appts, sent };
+    return { drafts, quoted, appts, sent };
   }, [filtered]);
 
   const Card = ({ row }: { row: EstimateRow }) => {
     const isUpdating = updatingRef === row.Ref;
     const status = (row.Status || "").trim();
+    const isDraft = status === STATUS_DRAFT;
     return (
       <Link
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
-        className="block cursor-pointer rounded-xl border border-mist-200 bg-white p-4 shadow-sm transition hover:border-navy-400 hover:shadow-soft"
+        className={`block cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition hover:border-navy-400 hover:shadow-soft ${
+          isDraft
+            ? "border-gold-300 bg-gold-50/40"
+            : "border-mist-200"
+        }`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -440,7 +449,12 @@ export default function DashboardPage() {
           )}
         </dl>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {row["PDF URL"] && (
+          {isDraft && (
+            <span className="rounded-md bg-gold-200 px-2.5 py-1 text-xs font-medium text-navy-900">
+              Resume draft →
+            </span>
+          )}
+          {!isDraft && row["PDF URL"] && (
             <a
               href={row["PDF URL"]}
               target="_blank"
@@ -451,7 +465,7 @@ export default function DashboardPage() {
               View PDF ↗
             </a>
           )}
-          {status !== STATUS_APPOINTMENT && status !== STATUS_SENT_TO_WG && (
+          {!isDraft && status !== STATUS_APPOINTMENT && status !== STATUS_SENT_TO_WG && (
             <button
               type="button"
               disabled={isUpdating}
@@ -473,7 +487,7 @@ export default function DashboardPage() {
               Book appointment
             </button>
           )}
-          {status !== STATUS_SENT_TO_WG && (
+          {!isDraft && status !== STATUS_SENT_TO_WG && (
             <button
               type="button"
               disabled={isUpdating}
@@ -495,18 +509,20 @@ export default function DashboardPage() {
               Mark sent to WG
             </button>
           )}
-          <button
-            type="button"
-            disabled={isUpdating}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              addFollowUp(row);
-            }}
-            className="rounded-md border border-navy-200 bg-white px-2.5 py-1 text-xs font-medium text-navy-800 transition hover:bg-navy-50 disabled:opacity-50"
-          >
-            Follow up
-          </button>
+          {!isDraft && (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                addFollowUp(row);
+              }}
+              className="rounded-md border border-navy-200 bg-white px-2.5 py-1 text-xs font-medium text-navy-800 transition hover:bg-navy-50 disabled:opacity-50"
+            >
+              Follow up
+            </button>
+          )}
           {(status === STATUS_APPOINTMENT || status === STATUS_SENT_TO_WG) && (
             <button
               type="button"
@@ -753,7 +769,14 @@ export default function DashboardPage() {
           Loading estimates…
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div
+          className={`grid grid-cols-1 gap-5 ${
+            cols.drafts.length > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"
+          }`}
+        >
+          {cols.drafts.length > 0 && (
+            <Column title="Drafts" rows={cols.drafts} accent="text-gold-800" />
+          )}
           <Column
             title="Plans quoted"
             rows={cols.quoted}
