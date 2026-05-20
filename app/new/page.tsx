@@ -20,6 +20,7 @@ import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
 import { generateEstimateId } from "@/lib/estimate";
 import PostcodeCouncil from "@/components/PostcodeCouncil";
+import PostcodeAddressFill from "@/components/PostcodeAddressFill";
 import type {
   ArrangerNote,
   CustomDisbursement,
@@ -834,6 +835,11 @@ function StepCustomer({
           />
         </div>
         <div className="sm:col-span-2">
+          <PostcodeAddressFill
+            address={c.address}
+            onAddressChange={(next) => update({ address: next })}
+            onCouncilChange={(district) => update({ councilDistrict: district })}
+          />
           <label className="field-label">Address</label>
           <textarea
             className="field-input min-h-[88px]"
@@ -984,6 +990,10 @@ function StepPerson({
           />
         </div>
         <div className="sm:col-span-2">
+          <PostcodeAddressFill
+            address={person.address}
+            onAddressChange={(next) => update({ address: next })}
+          />
           <label className="field-label">Home address</label>
           <textarea
             className="field-input min-h-[72px]"
