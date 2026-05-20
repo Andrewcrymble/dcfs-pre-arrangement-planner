@@ -255,8 +255,23 @@ export default function Home() {
     const ref = new URLSearchParams(window.location.search).get("ref");
     if (!ref) return;
     setEditRef(ref);
-    fetch(`/api/estimates?ref=${encodeURIComponent(ref)}`, { cache: "no-store" })
-      .then((r) => r.json())
+    fetch(`/api/estimates?ref=${encodeURIComponent(ref)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        // Same auth-redirect guard as saveAndExit — if middleware sent us to
+        // /login, the JSON parse below would silently fail and the wizard
+        // would open blank with no indication of why.
+        if (r.redirected && /\/login\b/.test(r.url)) {
+          throw new Error("Your session has expired — please log in again");
+        }
+        const ct = r.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          throw new Error("Couldn't load the saved estimate (server returned non-JSON)");
+        }
+        return r.json();
+      })
       .then((data) => {
         const e = data?.estimate;
         if (!e) return;
@@ -344,8 +359,17 @@ export default function Home() {
             : prev.person,
         }));
       })
-      .catch(() => {
-        // Ignore — wizard still works with empty form.
+      .catch((err) => {
+        // Surface failures so a session expiry / 502 doesn't manifest as
+        // a mysteriously blank wizard. The arranger now sees what went
+        // wrong and can re-log-in or refresh rather than thinking the
+        // draft is lost.
+        setTopToast({
+          kind: "error",
+          text:
+            "Couldn't load this estimate — " +
+            (err instanceof Error ? err.message : "unknown error"),
+        });
       });
   }, []);
 
@@ -465,6 +489,7 @@ export default function Home() {
       const res = await fetch("/api/estimates", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({
           estimateId: ref,
           customer: form.customer,
@@ -474,8 +499,24 @@ export default function Home() {
           selections: selectionsSnapshot,
         }),
       });
+      // The auth middleware redirects unauthenticated requests to /login
+      // with HTTP 200 (HTML body). Without this guard, the fetch reports
+      // res.ok=true and we'd silently clear localStorage and ship the user
+      // back to "/" with no draft to resume. Detect it via the final URL.
+      if (res.redirected && /\/login\b/.test(res.url)) {
+        throw new Error("Your session has expired — please log in again");
+      }
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        throw new Error("Unexpected response from server (not JSON)");
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (!data?.ref && !data?.ok) {
+        throw new Error("Server didn't confirm the draft was saved");
+      }
+      // Only clear local backup AFTER server confirmation — protects against
+      // a partial save where the dashboard row didn't land.
       clearDraft();
       setDraftSavedAt(null);
       window.location.href = "/";
@@ -585,21 +626,21 @@ export default function Home() {
       )}
 
       {!resumePrompt && (
-        <div className="mt-3 flex items-center justify-between text-xs">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="text-mist-400">
             {editRef
               ? `Editing ${editRef}`
               : draftSavedAt
-                ? `Draft saved ${timeSince(draftSavedAt)}`
-                : "Drafts auto-save as you go"}
+                ? `Auto-saved in this browser ${timeSince(draftSavedAt)}`
+                : "Auto-saves to this browser — use \"Save & exit\" to keep on the dashboard"}
           </span>
           <button
             type="button"
             onClick={saveAndExit}
             disabled={savingAndExiting}
-            className="text-mist-400 underline-offset-2 hover:text-navy-700 hover:underline disabled:opacity-50"
+            className="rounded-md border border-navy-300 bg-white px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:border-navy-500 hover:bg-mist-50 disabled:opacity-50"
           >
-            {savingAndExiting ? "Saving…" : "Save & exit →"}
+            {savingAndExiting ? "Saving…" : "Save & exit to dashboard"}
           </button>
         </div>
       )}
