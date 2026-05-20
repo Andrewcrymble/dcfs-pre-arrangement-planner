@@ -232,6 +232,16 @@ export default function Home() {
     kind: "success" | "error";
     text: string;
   } | null>(null);
+
+  // Background auto-push state. `autoDraftRef` is the Ref the server
+  // assigned to this draft on its first push — we hold onto it so every
+  // subsequent push upserts the same row instead of duplicating. `lastPushed`
+  // is the JSON of the last form snapshot we successfully pushed; we diff
+  // against it so identical form state (e.g. user clicking around but not
+  // typing) doesn't hit the API needlessly.
+  const autoDraftRef = useRef<string | null>(null);
+  const lastPushed = useRef<string>("");
+  const [autoPushedAt, setAutoPushedAt] = useState<string | null>(null);
   const [resumePrompt, setResumePrompt] = useState<{ savedAt: string } | null>(null);
   const draftChecked = useRef(false);
 
@@ -442,6 +452,87 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [form, resumePrompt, editRef]);
 
+  // Server-side auto-push: after meaningful input + 8s idle, push the
+  // current form to the dashboard as a Draft row so it appears on the
+  // dashboard from any device. Diff-hashed against the last successful
+  // push so we don't re-POST on every keystroke. Skipped while the resume
+  // prompt is up; for in-place edits (editRef set) the same path also
+  // upserts the existing row (save_draft preserves promoted statuses).
+  useEffect(() => {
+    if (resumePrompt) return;
+    // Same "user has done something meaningful" gate as the localStorage
+    // auto-save — don't materialise an empty Draft row from a passive visit.
+    const hasAnyInput =
+      form.customer.fullName.trim() !== "" ||
+      form.customer.telephone.trim() !== "" ||
+      form.customer.email.trim() !== "" ||
+      form.customer.address.trim() !== "" ||
+      form.funeralType !== "" ||
+      form.serviceChoice !== "" ||
+      form.coffin !== "";
+    if (!hasAnyInput) return;
+
+    const snapshot = {
+      customer: form.customer,
+      person: form.person,
+      funeralType: form.funeralType,
+      serviceChoice: form.serviceChoice,
+      coffin: form.coffin,
+      transport: form.transport,
+      additionalServices: form.additionalServices,
+      disbursements: form.disbursements,
+      customDisbursements: form.customDisbursements,
+      wishes: form.wishes,
+      directPackageDiscount: form.directPackageDiscount,
+      arrangerNotes: form.arrangerNotes,
+      deposit: form.deposit,
+      notesForClient: form.notesForClient,
+      showFinanceOptions: form.showFinanceOptions,
+    };
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === lastPushed.current) return; // nothing changed
+
+    const t = setTimeout(async () => {
+      const ref = editRef || autoDraftRef.current || generateEstimateId();
+      try {
+        const res = await fetch("/api/estimates", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            estimateId: ref,
+            customer: form.customer,
+            person:
+              form.customer.arrangementFor === "Someone else" ? form.person : null,
+            total: totals.grandTotal,
+            selections: snapshot,
+          }),
+        });
+        if (res.redirected && /\/login\b/.test(res.url)) {
+          // Session expired — fall back silently to localStorage-only. The
+          // explicit "Save & exit" button surfaces the same condition with
+          // a toast; here we don't want repeated unsolicited error noise
+          // every 8s.
+          return;
+        }
+        if (!res.ok) return;
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) return;
+        const data = await res.json().catch(() => ({}));
+        if (!data?.ok && !data?.ref) return;
+        // Remember the Ref so the next push upserts in place.
+        if (!autoDraftRef.current && !editRef) {
+          autoDraftRef.current = ref;
+        }
+        lastPushed.current = serialized;
+        setAutoPushedAt(new Date().toISOString());
+      } catch {
+        // Transient network failure — try again on the next change.
+      }
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [form, totals.grandTotal, resumePrompt, editRef]);
+
   const resumeDraft = () => {
     const d = loadDraft();
     if (d) {
@@ -466,7 +557,7 @@ export default function Home() {
     if (savingAndExiting) return;
     setSavingAndExiting(true);
     try {
-      const ref = editRef || generateEstimateId();
+      const ref = editRef || autoDraftRef.current || generateEstimateId();
       // Same snapshot shape as the PDF upload path so the dashboard row
       // and a future PDF generation agree on every field.
       const selectionsSnapshot = {
@@ -629,10 +720,12 @@ export default function Home() {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="text-mist-400">
             {editRef
-              ? `Editing ${editRef}`
-              : draftSavedAt
-                ? `Auto-saved in this browser ${timeSince(draftSavedAt)}`
-                : "Auto-saves to this browser — use \"Save & exit\" to keep on the dashboard"}
+              ? `Editing ${editRef} — changes auto-save to the dashboard`
+              : autoPushedAt
+                ? `Saved to dashboard ${timeSince(autoPushedAt)}`
+                : draftSavedAt
+                  ? `Saved in this browser ${timeSince(draftSavedAt)} — pushing to dashboard…`
+                  : "Auto-saves as you type"}
           </span>
           <button
             type="button"
@@ -640,7 +733,7 @@ export default function Home() {
             disabled={savingAndExiting}
             className="rounded-md border border-navy-300 bg-white px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:border-navy-500 hover:bg-mist-50 disabled:opacity-50"
           >
-            {savingAndExiting ? "Saving…" : "Save & exit to dashboard"}
+            {savingAndExiting ? "Saving…" : "Save & exit"}
           </button>
         </div>
       )}
