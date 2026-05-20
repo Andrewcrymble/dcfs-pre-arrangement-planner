@@ -1000,6 +1000,7 @@ function StepPerson({
             value={person.address}
             onChange={(e) => update({ address: e.target.value })}
           />
+          <PostcodeCouncil address={person.address} />
         </div>
         <div>
           <label className="field-label">Doctor / GP name</label>
