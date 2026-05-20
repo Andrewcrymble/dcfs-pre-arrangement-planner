@@ -752,6 +752,12 @@ export async function generateEstimatePdf(
   const clientNotes =
     typeof form.notesForClient === "string" ? form.notesForClient.trim() : "";
   if (clientNotes) {
+    // Set the body font BEFORE splitTextToSize — the previous block
+    // (italic 8pt finance footnote) leaves the doc in a font whose
+    // glyph widths produce wrong wrap calculations, and the lines
+    // overflow the right margin when rendered at the real body size.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
     const noteBodyLines = doc.splitTextToSize(clientNotes, contentWidth);
     const sectionHeight = noteBodyLines.length * 12 + 36;
     if (y + sectionHeight > LETTERHEAD_BOTTOM_SAFE) {
