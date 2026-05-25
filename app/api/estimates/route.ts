@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { estimateId, customer, person, total, selections } = body;
+  const { estimateId, customer, person, total, selections, partnerRef } = body;
   if (typeof estimateId !== "string" || estimateId === "") {
     return NextResponse.json({ error: "estimateId required" }, { status: 400 });
   }
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
     person: normalizedPerson,
     total,
     selections,
+    partnerRef,
   });
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { ok: true, ref: estimateId });
@@ -111,7 +112,14 @@ export async function PATCH(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { ref, status: newStatus, appointmentDate, sentToWG, quotedDate } = body;
+  const {
+    ref,
+    status: newStatus,
+    appointmentDate,
+    sentToWG,
+    quotedDate,
+    partnerRef,
+  } = body;
   if (typeof ref !== "string" || ref === "") {
     return NextResponse.json({ error: "ref required" }, { status: 400 });
   }
@@ -121,6 +129,7 @@ export async function PATCH(req: Request) {
     appointmentDate,
     sentToWG,
     quotedDate,
+    partnerRef,
   });
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { ok: true });

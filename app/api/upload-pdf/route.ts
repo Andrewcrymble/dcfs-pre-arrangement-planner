@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { pdfBase64, filename, estimateId, customer, person, total, selections } = payload;
+  const { pdfBase64, filename, estimateId, customer, person, total, selections, partnerRef } = payload;
   if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
     return NextResponse.json({ error: "pdfBase64 required" }, { status: 400 });
   }
@@ -72,6 +72,9 @@ export async function POST(req: Request) {
         // services, disbursements, wishes — when staff reopens this
         // record. Stored in the "Data" column of the Estimates sheet.
         selections,
+        // Partner linking — written to the "Partner Ref" column when
+        // present. Apps Script tolerates it being absent.
+        partnerRef,
       }),
       cache: "no-store",
       // Apps Script web apps usually 302 from /exec to a googleusercontent

@@ -245,6 +245,12 @@ export default function Home() {
   const [autoPushedAt, setAutoPushedAt] = useState<string | null>(null);
   const [resumePrompt, setResumePrompt] = useState<{ savedAt: string } | null>(null);
   const draftChecked = useRef(false);
+  // When this wizard is opened as a partner quote (?partner=1&partnerOf=…),
+  // the originating ref is stashed here so we can (a) send it with the
+  // upload payload — Apps Script writes it to the new row's Partner Ref
+  // column — and (b) cross-PATCH the original record so both sides point
+  // at each other.
+  const [partnerOf, setPartnerOf] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,6 +437,8 @@ export default function Home() {
     // skip the resume-draft prompt entirely — this is a fresh sibling
     // quote, not a resume.
     if (params.get("partner") === "1") {
+      const originRef = params.get("partnerOf");
+      if (originRef) setPartnerOf(originRef);
       try {
         const raw = sessionStorage.getItem("dcfs:partnerHousehold");
         if (raw) {
@@ -538,6 +546,7 @@ export default function Home() {
               form.customer.arrangementFor === "Someone else" ? form.person : null,
             total: totals.grandTotal,
             selections: snapshot,
+            partnerRef: partnerOf || undefined,
           }),
         });
         if (res.redirected && /\/login\b/.test(res.url)) {
@@ -563,7 +572,7 @@ export default function Home() {
       }
     }, 8000);
     return () => clearTimeout(t);
-  }, [form, totals.grandTotal, resumePrompt, editRef]);
+  }, [form, totals.grandTotal, resumePrompt, editRef, partnerOf]);
 
   const resumeDraft = () => {
     const d = loadDraft();
@@ -620,6 +629,7 @@ export default function Home() {
             form.customer.arrangementFor === "Someone else" ? form.person : null,
           total: totals.grandTotal,
           selections: selectionsSnapshot,
+          partnerRef: partnerOf || undefined,
         }),
       });
       // The auth middleware redirects unauthenticated requests to /login
@@ -936,6 +946,8 @@ export default function Home() {
             lines={lines}
             onBack={goBack}
             editRef={editRef}
+            autoDraftRef={autoDraftRef}
+            partnerOf={partnerOf}
             onDraftConsumed={() => setDraftSavedAt(null)}
           />
         ) : (
@@ -2044,12 +2056,23 @@ function SummaryActions({
   lines,
   onBack,
   editRef,
+  autoDraftRef,
+  partnerOf,
   onDraftConsumed,
 }: {
   form: FormState;
   lines: ReturnType<typeof buildSelectedLines>;
   onBack: () => void;
   editRef: string | null;
+  // Server-assigned ref for this wizard's auto-pushed draft (if any).
+  // Used as a fallback when editRef isn't set, so the partner button can
+  // still pass a real Ref to the new tab without forcing the arranger to
+  // generate the PDF first.
+  autoDraftRef?: React.MutableRefObject<string | null>;
+  // Set when this wizard was opened as a partner quote — the originating
+  // record's Ref. We forward it on save (Apps Script writes Partner Ref
+  // on the new row) and then PATCH the origin to point back at us.
+  partnerOf?: string | null;
   // Notify the parent that the in-flight draft has been finalised (PDF
   // downloaded or sent), so it can clear the "Draft saved X ago" indicator.
   onDraftConsumed?: () => void;
@@ -2121,6 +2144,11 @@ function SummaryActions({
         form.customer.arrangementFor === "Someone else" ? form.person : null,
       total: totalsForUpload.grandTotal,
       selections: selectionsSnapshot,
+      // Partner linking — when this wizard was launched from another
+      // quote's "+ Start partner quote" button, partnerOf carries the
+      // originating Ref. Apps Script writes it into this row's Partner
+      // Ref column so the dashboard can show the two cards as paired.
+      partnerRef: partnerOf || undefined,
     };
   };
 
@@ -2146,6 +2174,24 @@ function SummaryActions({
         });
       } catch (err) {
         console.error("Drive upload failed (download path):", err);
+      }
+      // Two-way partner link. The new record carries partnerRef ->
+      // origin (written above by Apps Script during the upload). Now we
+      // patch the origin so it carries partnerRef -> this new ref. Best
+      // effort — link visibility is a nicety, not blocking.
+      if (partnerOf) {
+        try {
+          await fetch("/api/estimates", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ref: partnerOf,
+              partnerRef: result.estimateId,
+            }),
+          });
+        } catch (err) {
+          console.error("Partner back-link failed (download path):", err);
+        }
       }
       setToast({
         kind: "success",
@@ -2274,6 +2320,24 @@ function SummaryActions({
         }
       }
 
+      // Cross-link: if this wizard was opened as a partner quote, patch
+      // the origin record so its Partner Ref points back at us. Same
+      // best-effort posture as the rest of post-send admin.
+      if (partnerOf) {
+        try {
+          await fetch("/api/estimates", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ref: partnerOf,
+              partnerRef: pdfResult.estimateId,
+            }),
+          });
+        } catch {
+          // Ignore — link is a nicety, not blocking.
+        }
+      }
+
       // Schedule a 7-day follow-up reminder in Outlook (next weekday at
       // 9am). Best-effort — if MS isn't connected, /api/microsoft/event
       // returns 500/503 and we just skip silently.
@@ -2326,8 +2390,9 @@ function SummaryActions({
   // Open a fresh wizard tab pre-filled with this household's contact
   // details so the arranger can quote a partner without re-typing phone,
   // email, branch, address. The new quote saves as a separate record;
-  // the link between the two is currently informal (same household contact
-  // info). A future iteration can persist a "Partner Ref" pointing back.
+  // if we know our own Ref (either editRef or the auto-pushed draft Ref)
+  // we pass it as ?partnerOf=… so the new wizard can write the cross-link
+  // back on its first save.
   const handleStartPartnerQuote = () => {
     if (typeof window === "undefined") return;
     try {
@@ -2346,7 +2411,11 @@ function SummaryActions({
       // just open empty, which is no worse than the existing "+ New
       // estimate" link.
     }
-    window.open("/new?partner=1", "_blank", "noopener,noreferrer");
+    const originRef = editRef || autoDraftRef?.current || "";
+    const url = originRef
+      ? `/new?partner=1&partnerOf=${encodeURIComponent(originRef)}`
+      : "/new?partner=1";
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (

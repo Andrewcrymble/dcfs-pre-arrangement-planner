@@ -17,6 +17,7 @@ interface EstimateRow {
   "Appointment Date": string;
   "Sent to WG": string;
   "Quoted Date"?: string;
+  "Partner Ref"?: string;
   "PDF URL": string;
 }
 
@@ -371,6 +372,14 @@ export default function DashboardPage() {
     return Array.from(set).sort();
   }, [estimates]);
 
+  // Index by Ref so partner cards can resolve their partner's display
+  // name + PDF URL in O(1) without scanning the array every render.
+  const byRef = useMemo(() => {
+    const m = new Map<string, EstimateRow>();
+    for (const e of estimates) if (e.Ref) m.set(e.Ref, e);
+    return m;
+  }, [estimates]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return estimates.filter((e) => {
@@ -419,6 +428,8 @@ export default function DashboardPage() {
     const isUpdating = updatingRef === row.Ref;
     const status = (row.Status || "").trim();
     const isDraft = status === STATUS_DRAFT;
+    const partnerRef = row["Partner Ref"];
+    const partner = partnerRef ? byRef.get(partnerRef) : undefined;
     return (
       <Link
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
@@ -480,6 +491,20 @@ export default function DashboardPage() {
               {formatDate(row["Sent to WG"])}
             </div>
           )}
+          {partnerRef && (
+            <div>
+              <span className="text-mist-400">Partner:</span>{" "}
+              {partner ? (
+                <span className="font-medium text-navy-800">
+                  {partner.Customer || partnerRef}
+                </span>
+              ) : (
+                <span className="font-mono text-xs text-mist-400">
+                  {partnerRef}
+                </span>
+              )}
+            </div>
+          )}
         </dl>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {isDraft && (
@@ -497,6 +522,24 @@ export default function DashboardPage() {
             >
               View PDF ↗
             </a>
+          )}
+          {!isDraft && partner?.["PDF URL"] && row["PDF URL"] && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Open this card's PDF first, then the partner's. A single
+                // click for the arranger gets both quotes on screen — the
+                // proper merged-into-one-document combined PDF is a
+                // future iteration.
+                window.open(row["PDF URL"], "_blank", "noopener,noreferrer");
+                window.open(partner["PDF URL"], "_blank", "noopener,noreferrer");
+              }}
+              className="text-xs font-medium text-navy-700 underline-offset-2 hover:underline"
+            >
+              View both PDFs ↗
+            </button>
           )}
           {!isDraft && status !== STATUS_APPOINTMENT && status !== STATUS_SENT_TO_WG && (
             <button
