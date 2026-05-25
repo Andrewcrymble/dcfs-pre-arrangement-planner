@@ -534,7 +534,6 @@ export default function DashboardPage() {
                 if (!date) return;
                 updateStatus(row.Ref, {
                   status: STATUS_QUOTED,
-                  appointmentDate: "",
                   quotedDate: date,
                 });
               }}
