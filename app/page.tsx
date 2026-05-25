@@ -84,6 +84,25 @@ function formatDate(iso: string | undefined): string {
   });
 }
 
+// Appointment values can be "YYYY-MM-DD HH:MM" (from the booking form) or
+// just "DD/MM/YYYY" (from the wizard prompt). Show the time when present.
+function formatDateTime(value: string | undefined): string {
+  if (!value) return "";
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (!isNaN(d.getTime())) {
+      const datePart = d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      return `${datePart} · ${m[4]}:${m[5]}`;
+    }
+  }
+  return formatDate(value);
+}
+
 export default function DashboardPage() {
   const [estimates, setEstimates] = useState<EstimateRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -397,6 +416,8 @@ export default function DashboardPage() {
     return (
       <Link
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
+        target="_blank"
+        rel="noopener noreferrer"
         className={`block cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition hover:border-navy-400 hover:shadow-soft ${
           isDraft
             ? "border-gold-300 bg-gold-50/40"
@@ -438,7 +459,7 @@ export default function DashboardPage() {
           {row["Appointment Date"] && (
             <div>
               <span className="text-mist-400">Appointment:</span>{" "}
-              {formatDate(row["Appointment Date"])}
+              {formatDateTime(row["Appointment Date"])}
             </div>
           )}
           {row["Sent to WG"] && (
