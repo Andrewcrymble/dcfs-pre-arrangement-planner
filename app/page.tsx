@@ -404,12 +404,34 @@ export default function DashboardPage() {
     return m;
   }, [estimates]);
 
+  // Bidirectional partner lookup. Even when only one side carries the
+  // Partner Ref (cross-PATCH back to the origin failed, or staff linked
+  // them manually in the sheet on only one side), both sides can find
+  // their partner row through this map.
+  const partnerByRef = useMemo(() => {
+    const m = new Map<string, EstimateRow>();
+    for (const e of estimates) {
+      const a = e.Ref;
+      const b = e["Partner Ref"];
+      if (!a || !b) continue;
+      const partnerRow = byRef.get(b);
+      if (!partnerRow) continue;
+      m.set(a, partnerRow);
+      // Tag the other side too, but don't overwrite an existing entry —
+      // an explicit Partner Ref on that side wins over an inferred link.
+      if (!m.has(b)) m.set(b, e);
+    }
+    return m;
+  }, [estimates, byRef]);
+
   // Group linked plans (couples / household pairs) so both cards share a
-  // visual cue — colored left border and a "Pair N" chip — making it
+  // visual cue — coloured left border and a "Pair N" chip — making it
   // obvious at a glance which records belong together even when they sit
-  // in different status columns. Only pairs that reference each other in
-  // both directions get an index; one-sided links still show the
-  // "Partner: <Name>" line but don't claim a paired color.
+  // in different status columns. A one-sided link (only one row's
+  // Partner Ref points at the other) is treated as a pair and colours
+  // both sides — covers the common case where the cross-PATCH back to
+  // the origin didn't fire (or where the link was set manually in the
+  // sheet on only one side).
   const pairIndexByRef = useMemo(() => {
     const idx = new Map<string, number>();
     const seenPair = new Map<string, number>();
@@ -418,9 +440,10 @@ export default function DashboardPage() {
       const a = e.Ref;
       const b = e["Partner Ref"];
       if (!a || !b) continue;
-      const partnerRow = byRef.get(b);
-      if (!partnerRow) continue;
-      if (partnerRow["Partner Ref"] !== a) continue;
+      // Only colour when the referenced row actually exists in the list —
+      // a Partner Ref pointing at a deleted record shouldn't burn a
+      // palette slot.
+      if (!byRef.get(b)) continue;
       // Canonicalise the pair so both sides hash to the same key.
       const key = a < b ? `${a}|${b}` : `${b}|${a}`;
       let pi = seenPair.get(key);
@@ -428,7 +451,11 @@ export default function DashboardPage() {
         pi = nextIdx++;
         seenPair.set(key, pi);
       }
+      // Tag BOTH sides with the same index — even the side that doesn't
+      // itself carry a Partner Ref. This way a one-sided link still
+      // visibly groups the two cards.
       idx.set(a, pi);
+      idx.set(b, pi);
     }
     return idx;
   }, [estimates, byRef]);
@@ -535,8 +562,8 @@ export default function DashboardPage() {
     const isUpdating = updatingRef === row.Ref;
     const status = (row.Status || "").trim();
     const isDraft = status === STATUS_DRAFT;
-    const partnerRef = row["Partner Ref"];
-    const partner = partnerRef ? byRef.get(partnerRef) : undefined;
+    const partner = partnerByRef.get(row.Ref);
+    const partnerRef = partner?.Ref;
     const finance = financeByRef.get(row.Ref);
     const pairIdx = pairIndexByRef.get(row.Ref);
     const pairColor =
