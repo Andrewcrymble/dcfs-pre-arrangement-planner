@@ -22,7 +22,9 @@ import { generateEstimateId } from "@/lib/estimate";
 import PostcodeCouncil from "@/components/PostcodeCouncil";
 import type {
   ArrangerNote,
+  Branch,
   CustomDisbursement,
+  CustomerDetails,
   FormState,
   Person,
   PriceItem,
@@ -421,6 +423,37 @@ export default function Home() {
     draftChecked.current = true;
     const params = new URLSearchParams(window.location.search);
     if (params.get("ref")) return; // editing — skip draft
+
+    // Partner-quote flow: arranger clicked "+ Start a second quote for
+    // partner" on the summary of another estimate. We carry household
+    // contact info via sessionStorage (the originating tab writes it
+    // before opening this one), prefill the customer block with it, and
+    // skip the resume-draft prompt entirely — this is a fresh sibling
+    // quote, not a resume.
+    if (params.get("partner") === "1") {
+      try {
+        const raw = sessionStorage.getItem("dcfs:partnerHousehold");
+        if (raw) {
+          const h = JSON.parse(raw) as Partial<CustomerDetails>;
+          setForm((f) => ({
+            ...f,
+            customer: {
+              ...f.customer,
+              telephone: h.telephone ?? "",
+              email: h.email ?? "",
+              branch: (h.branch as Branch | "" | undefined) ?? "",
+              address: h.address ?? "",
+              councilDistrict: h.councilDistrict ?? "",
+            },
+          }));
+        }
+        sessionStorage.removeItem("dcfs:partnerHousehold");
+      } catch {
+        // Bad JSON or storage disabled — fall through to an empty wizard.
+      }
+      return;
+    }
+
     const draft = loadDraft();
     if (draft) {
       setResumePrompt({ savedAt: draft.savedAt });
@@ -2290,6 +2323,32 @@ function SummaryActions({
     }
   };
 
+  // Open a fresh wizard tab pre-filled with this household's contact
+  // details so the arranger can quote a partner without re-typing phone,
+  // email, branch, address. The new quote saves as a separate record;
+  // the link between the two is currently informal (same household contact
+  // info). A future iteration can persist a "Partner Ref" pointing back.
+  const handleStartPartnerQuote = () => {
+    if (typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "dcfs:partnerHousehold",
+        JSON.stringify({
+          telephone: form.customer.telephone,
+          email: form.customer.email,
+          branch: form.customer.branch,
+          address: form.customer.address,
+          councilDistrict: form.customer.councilDistrict || "",
+        }),
+      );
+    } catch {
+      // Storage can fail in private-browsing mode — the new tab will
+      // just open empty, which is no worse than the existing "+ New
+      // estimate" link.
+    }
+    window.open("/new?partner=1", "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="mt-8 flex flex-col gap-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -2311,6 +2370,15 @@ function SummaryActions({
           className="btn-gold"
         >
           {downloading ? "Generating…" : "⬇ Download PDF Estimate"}
+        </button>
+      </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleStartPartnerQuote}
+          className="text-sm font-medium text-navy-700 underline-offset-2 hover:underline"
+        >
+          + Start a second quote for partner (same household)
         </button>
       </div>
       <p className="text-center text-xs text-mist-400">
