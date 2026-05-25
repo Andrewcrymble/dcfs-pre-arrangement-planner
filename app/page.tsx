@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  monthlyInstalmentOptions,
+  ageInYears,
+  maxFinanceMonthsForAge,
+  INSTALMENT_APR,
+} from "@/lib/estimate";
 
 interface EstimateRow {
   Ref: string;
@@ -19,6 +25,10 @@ interface EstimateRow {
   "Quoted Date"?: string;
   "Partner Ref"?: string;
   "PDF URL": string;
+  // Full form snapshot (JSON) written by the wizard. Optional because
+  // older rows pre-date the Data column. Parsed on the dashboard to
+  // pull DOB + deposit for the max-term monthly figure.
+  Data?: string;
 }
 
 interface MsStatus {
@@ -380,6 +390,60 @@ export default function DashboardPage() {
     return m;
   }, [estimates]);
 
+  // Per-row "monthly at max term" figure. Pulls DOB + deposit out of the
+  // stored Data snapshot so the age cap (final payment before 80) and
+  // any deposit reduction are honoured. Falls back to a 10-year cap with
+  // no deposit when Data is missing (old rows) or unparseable. Skipped
+  // entirely when the estimate opted out of finance, when the total is
+  // not financeable, or when the plan holder is already past the age
+  // cutoff.
+  const financeByRef = useMemo(() => {
+    const m = new Map<string, { monthly: number; years: number }>();
+    for (const e of estimates) {
+      const total = typeof e.Total === "number" ? e.Total : Number(e.Total);
+      if (!isFinite(total) || total <= 0) continue;
+      let dob = "";
+      let deposit = 0;
+      let showFinance = true;
+      if (e.Data && typeof e.Data === "string") {
+        try {
+          const snap = JSON.parse(e.Data);
+          const arrFor = snap?.customer?.arrangementFor;
+          if (arrFor === "Someone else") {
+            dob = snap?.person?.dateOfBirth || "";
+          } else {
+            dob = snap?.customer?.dateOfBirth || "";
+          }
+          deposit =
+            typeof snap?.deposit === "number" && Number.isFinite(snap.deposit)
+              ? snap.deposit
+              : 0;
+          if (typeof snap?.showFinanceOptions === "boolean") {
+            showFinance = snap.showFinanceOptions;
+          }
+        } catch {
+          // Bad JSON — fall through to age-unknown defaults.
+        }
+      }
+      if (!showFinance) continue;
+      const amountToFinance = Math.max(0, total - Math.max(0, deposit));
+      if (amountToFinance <= 0) continue;
+      const age = ageInYears(dob);
+      const cap = maxFinanceMonthsForAge(age);
+      // age 80+ => 0 months => no finance offered
+      if (cap === 0) continue;
+      const opts = monthlyInstalmentOptions(
+        amountToFinance,
+        INSTALMENT_APR,
+        cap ?? undefined,
+      );
+      const longest = opts[opts.length - 1];
+      if (!longest) continue;
+      m.set(e.Ref, { monthly: longest.monthly, years: longest.months / 12 });
+    }
+    return m;
+  }, [estimates]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return estimates.filter((e) => {
@@ -430,6 +494,7 @@ export default function DashboardPage() {
     const isDraft = status === STATUS_DRAFT;
     const partnerRef = row["Partner Ref"];
     const partner = partnerRef ? byRef.get(partnerRef) : undefined;
+    const finance = financeByRef.get(row.Ref);
     return (
       <Link
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
@@ -473,6 +538,17 @@ export default function DashboardPage() {
             <span className="text-mist-400">Created:</span>{" "}
             {formatDate(row.Created)}
           </div>
+          {finance && (
+            <div>
+              <span className="text-mist-400">
+                Monthly @ {finance.years}y:
+              </span>{" "}
+              <span className="font-medium text-navy-800">
+                {formatGBP(finance.monthly)}
+              </span>
+              <span className="text-mist-400"> / mo</span>
+            </div>
+          )}
           {row["Appointment Date"] && (
             <div>
               <span className="text-mist-400">Appointment:</span>{" "}
