@@ -16,6 +16,12 @@ export const INSTALMENT_APR = 0.06;
 // under 80). Above this age, no finance is offered.
 export const FINANCE_MAX_AGE = 80;
 
+// Absolute ceiling on the finance term — even a 50-year-old who could
+// in theory pay for 29 years before hitting FINANCE_MAX_AGE is offered
+// at most 10 years. Acts in concert with the age cap; whichever is
+// shorter wins.
+export const FINANCE_MAX_TERM_YEARS = 10;
+
 export interface MonthlyOption {
   months: number;
   yearLabel: string;
@@ -60,7 +66,12 @@ export function monthlyInstalmentOptions(
     [108, "9 years"],
     [120, "10 years"],
   ];
-  const cap = typeof maxMonths === "number" && maxMonths > 0 ? maxMonths : Infinity;
+  // Absolute ceiling — even if the caller passes a larger maxMonths (or
+  // none at all), no plan beyond FINANCE_MAX_TERM_YEARS is offered.
+  const hardCeiling = FINANCE_MAX_TERM_YEARS * 12;
+  const requestedCap =
+    typeof maxMonths === "number" && maxMonths > 0 ? maxMonths : hardCeiling;
+  const cap = Math.min(requestedCap, hardCeiling);
   return allTerms
     .filter(([months]) => months <= cap)
     .map(([months, yearLabel]) => {
@@ -96,17 +107,23 @@ export function ageInYears(dob: string | undefined, at: Date = new Date()): numb
 }
 
 // Max financeable months given the plan holder's age. Final payment
-// must land before the holder reaches FINANCE_MAX_AGE.
+// must land before the holder reaches FINANCE_MAX_AGE, and the term
+// is additionally capped at FINANCE_MAX_TERM_YEARS — whichever is
+// shorter wins.
+//   - age 50 → 10 years (29 yrs allowed by age, but 10-year ceiling)
+//   - age 65 → 10 years (14 yrs allowed by age, but 10-year ceiling)
+//   - age 69 → 10 years (10 yrs allowed by age, ceiling matches)
 //   - age 71 → 8 years  (last payment at 79)
 //   - age 75 → 4 years  (last payment at 79)
 //   - age 79 → 0 years  (no finance)
 //   - age 80+ → 0 years (no finance)
 // Returns null when age is unknown — callers should treat that as
-// "no cap" to preserve existing behaviour for old records without a DOB.
+// "no age cap" (the 10-year ceiling still applies via the options fn).
 export function maxFinanceMonthsForAge(age: number | null): number | null {
   if (age === null) return null;
-  const maxYears = Math.max(0, FINANCE_MAX_AGE - 1 - age);
-  return maxYears * 12;
+  const ageYears = Math.max(0, FINANCE_MAX_AGE - 1 - age);
+  const cappedYears = Math.min(ageYears, FINANCE_MAX_TERM_YEARS);
+  return cappedYears * 12;
 }
 
 // Pulls the plan-holder's DOB out of a FormState. The customer is the
