@@ -2280,7 +2280,7 @@ function SummaryActions({
       const result = await generateEstimatePdf(
         form,
         lines,
-        editRef || undefined,
+        editRef || autoDraftRef?.current || undefined,
         { arrangerName, apr },
       );
       // Fire-and-forget save to the Estimates dashboard. We don't gate the
@@ -2346,7 +2346,7 @@ function SummaryActions({
       pdfResult = await generateEstimatePdf(
         form,
         lines,
-        editRef || undefined,
+        editRef || autoDraftRef?.current || undefined,
         { skipDownload: true, arrangerName, apr },
       );
     } catch (err) {
