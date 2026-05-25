@@ -39,6 +39,13 @@ export interface CustomerDetails {
   // PDF so the arranger knows which council's resident rate applies.
   // Optional — empty when no postcode has been detected yet.
   councilDistrict?: string;
+  // Plan-holder fields used when arrangementFor === "Myself" — the
+  // customer IS the plan holder. DOB drives the finance term cap
+  // (paying off must complete before age 80) and the underwriter
+  // application needs marital status + occupation.
+  dateOfBirth?: string;
+  maritalStatus?: string;
+  occupation?: string;
 }
 
 // Details about the person the plan is being arranged for. Only collected
@@ -54,6 +61,10 @@ export interface Person {
   doctorName: string;
   nextOfKinName: string;
   nextOfKinPhone: string;
+  // Underwriter-application fields. Optional so older saved estimates
+  // without them still load cleanly.
+  maritalStatus?: string;
+  occupation?: string;
 }
 
 export interface Wishes {

@@ -7,6 +7,10 @@ import {
   totalsForLines,
   generateEstimateId,
   monthlyInstalmentOptions,
+  ageInYears,
+  maxFinanceMonthsForAge,
+  planHolderDob,
+  FINANCE_MAX_AGE,
 } from "./estimate";
 
 // PDF uses muted black/grey palette for headings and rules (formal),
@@ -182,10 +186,25 @@ export async function generateEstimatePdf(
     ? Math.max(0, Math.min(form.deposit || 0, totals.grandTotal))
     : 0;
   const amountToFinance = Math.max(0, totals.grandTotal - depositApplied);
-  const fiveYearOption = showFinance
-    ? monthlyInstalmentOptions(amountToFinance, options.apr).find(
-        (o) => o.months === 60,
-      )
+  // Age-based finance cap. Final payment must land before the holder
+  // reaches FINANCE_MAX_AGE (80). A 71-year-old gets 8 years; a
+  // 75-year-old gets 4; 80+ gets nothing. Unknown DOB = no cap, which
+  // preserves the legacy 5-year offering for older saved estimates.
+  const planHolderAge = ageInYears(planHolderDob(form));
+  const ageCappedMaxMonths = maxFinanceMonthsForAge(planHolderAge);
+  const financeAllowed =
+    showFinance &&
+    amountToFinance > 0 &&
+    (ageCappedMaxMonths === null || ageCappedMaxMonths > 0);
+  // Headline option for the cover letter: the longest term within the
+  // age cap (or 5 years when there's no cap). This is the lowest monthly
+  // figure the customer can be quoted.
+  const headlineOptions = financeAllowed
+    ? monthlyInstalmentOptions(amountToFinance, options.apr, ageCappedMaxMonths ?? undefined)
+    : [];
+  const fiveYearOption = financeAllowed
+    ? headlineOptions.find((o) => o.months === 60) ||
+      headlineOptions[headlineOptions.length - 1]
     : undefined;
 
   let y = drawAddressedHeader();
@@ -229,12 +248,18 @@ export async function generateEstimatePdf(
     );
     y += 28;
 
-    // 5-year monthly — secondary line in serif italic
+    // Longest-term monthly — secondary line in serif italic. Was "5 YEARS"
+    // historically; with the age cap a 75-year-old can only go to 4 years,
+    // so the label tracks the actual option being shown.
     if (fiveYearOption) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(...SLATE);
-      doc.text("5 YEARS MONTHLY", margin, y);
+      doc.text(
+        `${fiveYearOption.yearLabel.toUpperCase()} MONTHLY`,
+        margin,
+        y,
+      );
       doc.setFont("times", "italic");
       doc.setFontSize(13);
       doc.setTextColor(...NAVY);
@@ -526,6 +551,8 @@ export async function generateEstimatePdf(
       ["Full name", form.person.fullName],
       ["Date of birth", form.person.dateOfBirth || "—"],
       ["Relationship", form.person.relationship || "—"],
+      ["Marital status", form.person.maritalStatus || "—"],
+      ["Occupation", form.person.occupation || "—"],
       ["Address", form.person.address || "—"],
       ["Doctor / GP", form.person.doctorName || "—"],
       [
@@ -651,11 +678,13 @@ export async function generateEstimatePdf(
     y += 22;
   }
 
-  // ---- Monthly instalment options (1–5 years; 24-month interest-free
-  // window then 6% APR amortized on the remaining balance for longer terms).
-  // Computed off `amountToFinance` so a deposit reduces every figure.
-  // Suppressed entirely when the estimate has opted out of finance options.
-  if (showFinance && amountToFinance > 0) {
+  // ---- Monthly instalment options. Terms are 1–10 years, capped at the
+  // plan holder's age — final payment must land before age 80. 24-month
+  // interest-free window then 6% APR on the remaining balance. Computed
+  // off `amountToFinance` so a deposit reduces every figure. Suppressed
+  // entirely when the estimate has opted out of finance OR the holder is
+  // already past the FINANCE_MAX_AGE cutoff.
+  if (financeAllowed) {
     if (y > LETTERHEAD_BOTTOM_SAFE - 160) {
       addPage();
       y = LETTERHEAD_TOP_SAFE;
@@ -685,6 +714,7 @@ export async function generateEstimatePdf(
     const instalmentOptions = monthlyInstalmentOptions(
       amountToFinance,
       options.apr,
+      ageCappedMaxMonths ?? undefined,
     );
     for (const opt of instalmentOptions) {
       // A financed row needs ~26pt (main + italic sub); a plain row ~14pt.
@@ -730,8 +760,12 @@ export async function generateEstimatePdf(
     doc.setFont("helvetica", "italic");
     doc.setFontSize(8);
     doc.setTextColor(...SLATE);
+    const ageNote =
+      ageCappedMaxMonths !== null && ageCappedMaxMonths > 0
+        ? ` Terms shown are capped so the final payment falls before age ${FINANCE_MAX_AGE}.`
+        : "";
     const noteLines = doc.splitTextToSize(
-      `First 24 months are interest-free. Beyond 24 months, a ${aprLabel} APR is applied to the remaining balance. ` +
+      `First 24 months are interest-free. Beyond 24 months, a ${aprLabel} APR is applied to the remaining balance.${ageNote} ` +
         "Figures are illustrative — your final monthly amount will be confirmed at sign-up.",
       contentWidth,
     );

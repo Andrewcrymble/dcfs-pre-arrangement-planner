@@ -11,6 +11,11 @@ export function isDirectFuneralType(name: string): boolean {
 export const INSTALMENT_INTEREST_FREE_MONTHS = 24;
 export const INSTALMENT_APR = 0.06;
 
+// Finance is only offered while the plan holder is paying before age 80.
+// e.g. a 71-year-old can finance for 8 years (final payment at 79, still
+// under 80). Above this age, no finance is offered.
+export const FINANCE_MAX_AGE = 80;
+
 export interface MonthlyOption {
   months: number;
   yearLabel: string;
@@ -26,9 +31,14 @@ export interface MonthlyOption {
 //   M = P·r / (1 + IF·r − (1+r)^−n)   where n = months − IF
 // `apr` is fractional (0.06 for 6%). Defaults to INSTALMENT_APR but the
 // caller can pass a value pulled from the Settings sheet at runtime.
+//
+// `maxMonths` (optional) drops longer-term options from the returned list.
+// Used so a 75-year-old (cap: 48 months) doesn't get offered an 8-year
+// plan that would run past the FINANCE_MAX_AGE cutoff.
 export function monthlyInstalmentOptions(
   grandTotal: number,
   apr: number = INSTALMENT_APR,
+  maxMonths?: number,
 ): MonthlyOption[] {
   const r = apr / 12;
   const compute = (months: number): number => {
@@ -38,25 +48,75 @@ export function monthlyInstalmentOptions(
     const denom = 1 + INSTALMENT_INTEREST_FREE_MONTHS * r - Math.pow(1 + r, -n);
     return (grandTotal * r) / denom;
   };
-  return [
+  const allTerms: Array<[number, string]> = [
     [12, "1 year"],
     [24, "2 years"],
     [36, "3 years"],
     [48, "4 years"],
     [60, "5 years"],
-  ].map(([months, yearLabel]) => {
-    const m = months as number;
-    const monthly = compute(m);
-    const totalPaid = monthly * m;
-    return {
-      months: m,
-      yearLabel: yearLabel as string,
-      monthly,
-      totalPaid,
-      financeCharge: Math.max(0, totalPaid - grandTotal),
-      isFinanced: m > INSTALMENT_INTEREST_FREE_MONTHS,
-    };
-  });
+    [72, "6 years"],
+    [84, "7 years"],
+    [96, "8 years"],
+    [108, "9 years"],
+    [120, "10 years"],
+  ];
+  const cap = typeof maxMonths === "number" && maxMonths > 0 ? maxMonths : Infinity;
+  return allTerms
+    .filter(([months]) => months <= cap)
+    .map(([months, yearLabel]) => {
+      const monthly = compute(months);
+      const totalPaid = monthly * months;
+      return {
+        months,
+        yearLabel,
+        monthly,
+        totalPaid,
+        financeCharge: Math.max(0, totalPaid - grandTotal),
+        isFinanced: months > INSTALMENT_INTEREST_FREE_MONTHS,
+      };
+    });
+}
+
+// Age in completed years on `at` (defaults to today). Returns null when
+// the DOB string is empty or unparseable so callers can disambiguate
+// "unknown" from "0 years old".
+export function ageInYears(dob: string | undefined, at: Date = new Date()): number | null {
+  if (!dob) return null;
+  // Accept both ISO YYYY-MM-DD (the form's <input type="date"> output)
+  // and free-text dates that Date can parse — older records used the
+  // latter.
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  let age = at.getFullYear() - d.getFullYear();
+  const monthDiff = at.getMonth() - d.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && at.getDate() < d.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+// Max financeable months given the plan holder's age. Final payment
+// must land before the holder reaches FINANCE_MAX_AGE.
+//   - age 71 → 8 years  (last payment at 79)
+//   - age 75 → 4 years  (last payment at 79)
+//   - age 79 → 0 years  (no finance)
+//   - age 80+ → 0 years (no finance)
+// Returns null when age is unknown — callers should treat that as
+// "no cap" to preserve existing behaviour for old records without a DOB.
+export function maxFinanceMonthsForAge(age: number | null): number | null {
+  if (age === null) return null;
+  const maxYears = Math.max(0, FINANCE_MAX_AGE - 1 - age);
+  return maxYears * 12;
+}
+
+// Pulls the plan-holder's DOB out of a FormState. The customer is the
+// plan holder when arrangementFor === "Myself"; otherwise the dedicated
+// person block carries it.
+export function planHolderDob(form: FormState): string {
+  if (form.customer.arrangementFor === "Someone else") {
+    return form.person.dateOfBirth || "";
+  }
+  return form.customer.dateOfBirth || "";
 }
 
 // Internal reference for an estimate. Format: DCFS-YYMMDD-XXXX.

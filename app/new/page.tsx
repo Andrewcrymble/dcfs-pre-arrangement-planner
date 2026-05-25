@@ -15,6 +15,10 @@ import {
   isBundledForDirect,
   BUNDLED_DISBURSEMENTS_FOR_DIRECT,
   monthlyInstalmentOptions,
+  ageInYears,
+  maxFinanceMonthsForAge,
+  planHolderDob,
+  FINANCE_MAX_AGE,
 } from "@/lib/estimate";
 import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
@@ -89,6 +93,8 @@ const EMPTY_PERSON: Person = {
   doctorName: "",
   nextOfKinName: "",
   nextOfKinPhone: "",
+  maritalStatus: "",
+  occupation: "",
 };
 
 const EMPTY_WISHES: Wishes = {
@@ -110,6 +116,9 @@ const EMPTY_FORM: FormState = {
     branch: "",
     arrangementFor: "",
     councilDistrict: "",
+    dateOfBirth: "",
+    maritalStatus: "",
+    occupation: "",
   },
   person: EMPTY_PERSON,
   funeralType: "",
@@ -1060,6 +1069,57 @@ function StepCustomer({
           ))}
         </div>
       </div>
+
+      {/*
+        Plan-holder fields. Only shown when the customer themselves is the
+        plan holder; for "Someone else" the equivalents are captured on
+        the dedicated person step. Date of birth drives the finance term
+        cap (paying off must complete before age 80); marital status and
+        occupation are captured for the underwriter application.
+      */}
+      {c.arrangementFor === "Myself" && (
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="field-label">
+              Date of birth{" "}
+              <span className="text-mist-400 font-normal">
+                (drives finance term)
+              </span>
+            </label>
+            <input
+              className="field-input"
+              type="date"
+              value={c.dateOfBirth || ""}
+              onChange={(e) => update({ dateOfBirth: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="field-label">Marital status</label>
+            <select
+              className="field-input"
+              value={c.maritalStatus || ""}
+              onChange={(e) => update({ maritalStatus: e.target.value })}
+            >
+              <option value="">— choose —</option>
+              <option value="Single">Single</option>
+              <option value="Married">Married</option>
+              <option value="Civil partnership">Civil partnership</option>
+              <option value="Widowed">Widowed</option>
+              <option value="Divorced">Divorced</option>
+              <option value="Separated">Separated</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="field-label">Occupation</label>
+            <input
+              className="field-input"
+              value={c.occupation || ""}
+              onChange={(e) => update({ occupation: e.target.value })}
+              placeholder="e.g. Retired, Teacher, Self-employed"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1144,11 +1204,15 @@ function StepPerson({
           />
         </div>
         <div>
-          <label className="field-label">Date of birth</label>
+          <label className="field-label">
+            Date of birth{" "}
+            <span className="text-mist-400 font-normal">
+              (drives finance term)
+            </span>
+          </label>
           <input
             className="field-input"
-            type="text"
-            placeholder="e.g. 14 March 1945"
+            type="date"
             value={person.dateOfBirth}
             onChange={(e) => update({ dateOfBirth: e.target.value })}
           />
@@ -1160,6 +1224,31 @@ function StepPerson({
             placeholder="e.g. mother, spouse, friend"
             value={person.relationship}
             onChange={(e) => update({ relationship: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label">Marital status</label>
+          <select
+            className="field-input"
+            value={person.maritalStatus || ""}
+            onChange={(e) => update({ maritalStatus: e.target.value })}
+          >
+            <option value="">— choose —</option>
+            <option value="Single">Single</option>
+            <option value="Married">Married</option>
+            <option value="Civil partnership">Civil partnership</option>
+            <option value="Widowed">Widowed</option>
+            <option value="Divorced">Divorced</option>
+            <option value="Separated">Separated</option>
+          </select>
+        </div>
+        <div>
+          <label className="field-label">Occupation</label>
+          <input
+            className="field-input"
+            value={person.occupation || ""}
+            onChange={(e) => update({ occupation: e.target.value })}
+            placeholder="e.g. Retired, Teacher"
           />
         </div>
         <div className="sm:col-span-2">
@@ -1625,6 +1714,13 @@ function StepSummary({
     Math.min(form.deposit || 0, totals.grandTotal),
   );
   const amountToFinance = Math.max(0, totals.grandTotal - depositApplied);
+  // Age-based finance cap. The plan holder is the customer when arranging
+  // for themselves, otherwise the dedicated person block. Final payment
+  // must complete before age 80; unknown DOB means no cap.
+  const planHolderAge = ageInYears(planHolderDob(form));
+  const ageCappedMaxMonths = maxFinanceMonthsForAge(planHolderAge);
+  const financeBlockedByAge =
+    ageCappedMaxMonths !== null && ageCappedMaxMonths === 0;
   const funeralLines = lines.filter((l) => l.category !== "disbursement");
   const disbLines = lines.filter((l) => l.category === "disbursement");
   const isDirect = isDirectFuneralType(form.funeralType);
@@ -1633,6 +1729,8 @@ function StepSummary({
       ["Full name", form.person.fullName],
       ["Date of birth", form.person.dateOfBirth],
       ["Relationship", form.person.relationship],
+      ["Marital status", form.person.maritalStatus || ""],
+      ["Occupation", form.person.occupation || ""],
       ["Address", form.person.address],
       ["Doctor / GP", form.person.doctorName],
       [
@@ -1829,6 +1927,20 @@ function StepSummary({
           </h3>
           <p className="mt-1 text-xs text-mist-400">
             First 24 months interest-free. Beyond that, {aprLabel} APR is applied to the remaining balance.
+            {planHolderAge !== null && (
+              <>
+                {" "}Plan holder is {planHolderAge}
+                {financeBlockedByAge ? (
+                  <> — at age {FINANCE_MAX_AGE} or above, monthly finance is not offered.</>
+                ) : ageCappedMaxMonths !== null ? (
+                  <>
+                    {" "}— terms capped at {ageCappedMaxMonths / 12} year
+                    {ageCappedMaxMonths / 12 === 1 ? "" : "s"} so the final
+                    payment lands before age {FINANCE_MAX_AGE}.
+                  </>
+                ) : null}
+              </>
+            )}
           </p>
 
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[200px_1fr] sm:items-end">
@@ -1860,8 +1972,14 @@ function StepSummary({
             )}
           </div>
 
+          {financeBlockedByAge ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Monthly plan options aren't available — finance is only offered
+              while the plan holder is under age {FINANCE_MAX_AGE}.
+            </p>
+          ) : (
           <ul className="mt-3 divide-y divide-mist-200">
-            {monthlyInstalmentOptions(amountToFinance, apr).map((opt) => (
+            {monthlyInstalmentOptions(amountToFinance, apr, ageCappedMaxMonths ?? undefined).map((opt) => (
               <li
                 key={opt.months}
                 className="flex flex-col py-2 sm:flex-row sm:items-baseline sm:justify-between"
@@ -1886,9 +2004,12 @@ function StepSummary({
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[11px] italic text-mist-400">
-            Figures are illustrative — your final monthly amount will be confirmed at sign-up.
-          </p>
+          )}
+          {!financeBlockedByAge && (
+            <p className="mt-3 text-[11px] italic text-mist-400">
+              Figures are illustrative — your final monthly amount will be confirmed at sign-up.
+            </p>
+          )}
         </section>
       )}
 
