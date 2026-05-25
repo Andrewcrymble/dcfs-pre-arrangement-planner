@@ -42,6 +42,20 @@ const STATUS_APPOINTMENT = "Appointment";
 const STATUS_SENT_TO_WG = "Sent to WG";
 const STATUS_DRAFT = "Draft";
 
+// Visual palette for partner-linked card pairs. Each pair claims one slot
+// in this list; we cycle if there are more pairs than colors. Tailwind
+// classes are fully spelled out so the JIT can pick them up at build.
+const PAIR_COLORS: Array<{ border: string; chip: string }> = [
+  { border: "border-l-indigo-500", chip: "bg-indigo-100 text-indigo-700" },
+  { border: "border-l-rose-500", chip: "bg-rose-100 text-rose-700" },
+  { border: "border-l-teal-500", chip: "bg-teal-100 text-teal-700" },
+  { border: "border-l-amber-500", chip: "bg-amber-100 text-amber-700" },
+  { border: "border-l-violet-500", chip: "bg-violet-100 text-violet-700" },
+  { border: "border-l-emerald-500", chip: "bg-emerald-100 text-emerald-700" },
+  { border: "border-l-cyan-500", chip: "bg-cyan-100 text-cyan-700" },
+  { border: "border-l-fuchsia-500", chip: "bg-fuchsia-100 text-fuchsia-700" },
+];
+
 // Combine a YYYY-MM-DD and HH:MM into an ISO string with no timezone — the
 // /api/microsoft/event endpoint adds the Europe/London timezone server-side.
 function combineDateTime(date: string, time: string): string {
@@ -390,6 +404,35 @@ export default function DashboardPage() {
     return m;
   }, [estimates]);
 
+  // Group linked plans (couples / household pairs) so both cards share a
+  // visual cue — colored left border and a "Pair N" chip — making it
+  // obvious at a glance which records belong together even when they sit
+  // in different status columns. Only pairs that reference each other in
+  // both directions get an index; one-sided links still show the
+  // "Partner: <Name>" line but don't claim a paired color.
+  const pairIndexByRef = useMemo(() => {
+    const idx = new Map<string, number>();
+    const seenPair = new Map<string, number>();
+    let nextIdx = 0;
+    for (const e of estimates) {
+      const a = e.Ref;
+      const b = e["Partner Ref"];
+      if (!a || !b) continue;
+      const partnerRow = byRef.get(b);
+      if (!partnerRow) continue;
+      if (partnerRow["Partner Ref"] !== a) continue;
+      // Canonicalise the pair so both sides hash to the same key.
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      let pi = seenPair.get(key);
+      if (pi === undefined) {
+        pi = nextIdx++;
+        seenPair.set(key, pi);
+      }
+      idx.set(a, pi);
+    }
+    return idx;
+  }, [estimates, byRef]);
+
   // Per-row "monthly at max term" figure. Pulls DOB + deposit out of the
   // stored Data snapshot so the age cap (final payment before 80) and
   // any deposit reduction are honoured. Falls back to a 10-year cap with
@@ -495,6 +538,9 @@ export default function DashboardPage() {
     const partnerRef = row["Partner Ref"];
     const partner = partnerRef ? byRef.get(partnerRef) : undefined;
     const finance = financeByRef.get(row.Ref);
+    const pairIdx = pairIndexByRef.get(row.Ref);
+    const pairColor =
+      pairIdx !== undefined ? PAIR_COLORS[pairIdx % PAIR_COLORS.length] : null;
     return (
       <Link
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
@@ -504,13 +550,27 @@ export default function DashboardPage() {
           isDraft
             ? "border-gold-300 bg-gold-50/40"
             : "border-mist-200"
-        }`}
+        } ${pairColor ? `border-l-4 ${pairColor.border}` : ""}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-navy-900">
-              {row.Customer || "(no name)"}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-semibold text-navy-900">
+                {row.Customer || "(no name)"}
+              </p>
+              {pairColor && pairIdx !== undefined && (
+                <span
+                  className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pairColor.chip}`}
+                  title={
+                    partner
+                      ? `Linked with ${partner.Customer || partnerRef}`
+                      : "Linked plan"
+                  }
+                >
+                  Pair {pairIdx + 1}
+                </span>
+              )}
+            </div>
             <p className="font-mono text-xs text-mist-400">{row.Ref}</p>
           </div>
           <span className="whitespace-nowrap text-sm font-semibold text-navy-700">
