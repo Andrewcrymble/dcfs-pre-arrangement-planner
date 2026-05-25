@@ -16,6 +16,7 @@ interface EstimateRow {
   Status: string;
   "Appointment Date": string;
   "Sent to WG": string;
+  "Quoted Date"?: string;
   "PDF URL": string;
 }
 
@@ -178,7 +179,12 @@ export default function DashboardPage() {
 
   const updateStatus = async (
     ref: string,
-    patch: { status?: string; appointmentDate?: string; sentToWG?: string },
+    patch: {
+      status?: string;
+      appointmentDate?: string;
+      sentToWG?: string;
+      quotedDate?: string;
+    },
   ) => {
     setUpdatingRef(ref);
     try {
@@ -462,6 +468,12 @@ export default function DashboardPage() {
               {formatDateTime(row["Appointment Date"])}
             </div>
           )}
+          {row["Quoted Date"] && (
+            <div>
+              <span className="text-mist-400">Quote sent:</span>{" "}
+              {formatDate(row["Quoted Date"])}
+            </div>
+          )}
           {row["Sent to WG"] && (
             <div>
               <span className="text-mist-400">Sent to WG:</span>{" "}
@@ -506,6 +518,29 @@ export default function DashboardPage() {
               className="rounded-md bg-navy-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-navy-700 disabled:opacity-50"
             >
               Book appointment
+            </button>
+          )}
+          {!isDraft && status === STATUS_APPOINTMENT && (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const date = window.prompt(
+                  "Date quote was sent (DD/MM/YYYY)",
+                  new Date().toLocaleDateString("en-GB"),
+                );
+                if (!date) return;
+                updateStatus(row.Ref, {
+                  status: STATUS_QUOTED,
+                  appointmentDate: "",
+                  quotedDate: date,
+                });
+              }}
+              className="rounded-md bg-navy-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-navy-700 disabled:opacity-50"
+            >
+              Mark quoted
             </button>
           )}
           {!isDraft && status !== STATUS_SENT_TO_WG && (

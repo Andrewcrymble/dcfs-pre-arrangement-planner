@@ -111,7 +111,7 @@ export async function PATCH(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { ref, status: newStatus, appointmentDate, sentToWG } = body;
+  const { ref, status: newStatus, appointmentDate, sentToWG, quotedDate } = body;
   if (typeof ref !== "string" || ref === "") {
     return NextResponse.json({ error: "ref required" }, { status: 400 });
   }
@@ -120,6 +120,7 @@ export async function PATCH(req: Request) {
     status: newStatus,
     appointmentDate,
     sentToWG,
+    quotedDate,
   });
   if (error) return NextResponse.json({ error }, { status });
   return NextResponse.json(data ?? { ok: true });
