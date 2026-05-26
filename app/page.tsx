@@ -110,10 +110,32 @@ function formatDate(iso: string | undefined): string {
   });
 }
 
-// Appointment values can be "YYYY-MM-DD HH:MM" (from the booking form) or
-// just "DD/MM/YYYY" (from the wizard prompt). Show the time when present.
+// Appointment values can be:
+//   "YYYY-MM-DD HH:MM"  — phone-booking form
+//   "DD/MM/YYYY HH:MM"  — per-card Book appointment prompts
+//   "DD/MM/YYYY"        — older records without a time
+// Time is shown when present in any of the three.
 function formatDateTime(value: string | undefined): string {
   if (!value) return "";
+  // DD/MM/YYYY HH:MM (with optional trailing seconds)
+  const ukWithTime = value.match(
+    /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/,
+  );
+  if (ukWithTime) {
+    const d = new Date(
+      Number(ukWithTime[3]),
+      Number(ukWithTime[2]) - 1,
+      Number(ukWithTime[1]),
+    );
+    if (!isNaN(d.getTime())) {
+      const datePart = d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      return `${datePart} · ${ukWithTime[4]}:${ukWithTime[5]}`;
+    }
+  }
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
   if (m) {
     const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
@@ -716,9 +738,18 @@ export default function DashboardPage() {
                   new Date().toLocaleDateString("en-GB"),
                 );
                 if (!date) return;
+                const time = window.prompt(
+                  "Appointment time (HH:MM, 24-hour)",
+                  "10:00",
+                );
+                if (time === null) return; // Cancel — abort entirely
+                const timeOk = /^\d{2}:\d{2}$/.test(time.trim());
+                const appointmentDate = timeOk
+                  ? `${date} ${time.trim()}`
+                  : date;
                 updateStatus(row.Ref, {
                   status: STATUS_APPOINTMENT,
-                  appointmentDate: date,
+                  appointmentDate,
                 });
               }}
               className="rounded-md bg-navy-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-navy-700 disabled:opacity-50"
