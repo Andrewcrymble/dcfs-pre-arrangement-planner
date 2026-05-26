@@ -726,21 +726,45 @@ export default function DashboardPage() {
               View both PDFs ↗
             </button>
           )}
-          {!isDraft && status !== STATUS_APPOINTMENT && status !== STATUS_SENT_TO_WG && (
+          {!isDraft && status !== STATUS_SENT_TO_WG && (
             <button
               type="button"
               disabled={isUpdating}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Pre-fill the prompts from the existing appointment value
+                // when there is one — lets staff tweak just the time without
+                // re-typing the date.
+                const existing = row["Appointment Date"] || "";
+                let defaultDate = new Date().toLocaleDateString("en-GB");
+                let defaultTime = "10:00";
+                const ukWithTime = existing.match(
+                  /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/,
+                );
+                const ukDateOnly = existing.match(/^(\d{2}\/\d{2}\/\d{4})$/);
+                const isoWithTime = existing.match(
+                  /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/,
+                );
+                if (ukWithTime) {
+                  defaultDate = ukWithTime[1];
+                  defaultTime = ukWithTime[2];
+                } else if (ukDateOnly) {
+                  defaultDate = ukDateOnly[1];
+                } else if (isoWithTime) {
+                  // Convert YYYY-MM-DD -> DD/MM/YYYY for the prompt UX
+                  const parts = isoWithTime[1].split("-");
+                  defaultDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                  defaultTime = isoWithTime[2];
+                }
                 const date = window.prompt(
                   "Appointment date (DD/MM/YYYY)",
-                  new Date().toLocaleDateString("en-GB"),
+                  defaultDate,
                 );
                 if (!date) return;
                 const time = window.prompt(
                   "Appointment time (HH:MM, 24-hour)",
-                  "10:00",
+                  defaultTime,
                 );
                 if (time === null) return; // Cancel — abort entirely
                 const timeOk = /^\d{2}:\d{2}$/.test(time.trim());
@@ -754,7 +778,7 @@ export default function DashboardPage() {
               }}
               className="rounded-md bg-navy-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-navy-700 disabled:opacity-50"
             >
-              Book appointment
+              {status === STATUS_APPOINTMENT ? "Edit appointment" : "Book appointment"}
             </button>
           )}
           {!isDraft && status === STATUS_APPOINTMENT && (
