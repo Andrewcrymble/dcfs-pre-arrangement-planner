@@ -90,6 +90,17 @@ export interface CustomDisbursement {
   price: number;
 }
 
+// Arranger-applied discount. `amount` is a positive number entered in
+// the wizard; buildSelectedLines flips it negative when rendering so
+// the existing total / monthly / financing pipeline picks it up
+// automatically. Distinct from `directPackageDiscount`, which is a
+// fixed pricing-sheet item triggered by the direct-funeral toggle.
+export interface CustomDiscount {
+  id: string;
+  label: string;
+  amount: number;
+}
+
 export interface FormState {
   customer: CustomerDetails;
   person: Person;
@@ -100,6 +111,7 @@ export interface FormState {
   additionalServices: string[];
   disbursements: string[];
   customDisbursements: CustomDisbursement[];
+  customDiscounts: CustomDiscount[];
   wishes: Wishes;
   directPackageDiscount: boolean;
   arrangerNotes: ArrangerNote[];

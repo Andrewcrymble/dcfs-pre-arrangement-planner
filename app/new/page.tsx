@@ -28,6 +28,7 @@ import type {
   ArrangerNote,
   Branch,
   CustomDisbursement,
+  CustomDiscount,
   CustomerDetails,
   FormState,
   Person,
@@ -128,6 +129,7 @@ const EMPTY_FORM: FormState = {
   additionalServices: [],
   disbursements: [],
   customDisbursements: [],
+  customDiscounts: [],
   wishes: EMPTY_WISHES,
   directPackageDiscount: false,
   arrangerNotes: [],
@@ -328,6 +330,9 @@ export default function Home() {
               customDisbursements: Array.isArray(snap.customDisbursements)
                 ? snap.customDisbursements
                 : prev.customDisbursements,
+              customDiscounts: Array.isArray(snap.customDiscounts)
+                ? snap.customDiscounts
+                : prev.customDiscounts,
               wishes: { ...prev.wishes, ...(snap.wishes || {}) },
               directPackageDiscount:
                 typeof snap.directPackageDiscount === "boolean"
@@ -531,6 +536,7 @@ export default function Home() {
       additionalServices: form.additionalServices,
       disbursements: form.disbursements,
       customDisbursements: form.customDisbursements,
+      customDiscounts: form.customDiscounts,
       wishes: form.wishes,
       directPackageDiscount: form.directPackageDiscount,
       arrangerNotes: form.arrangerNotes,
@@ -620,6 +626,7 @@ export default function Home() {
         additionalServices: form.additionalServices,
         disbursements: form.disbursements,
         customDisbursements: form.customDisbursements,
+        customDiscounts: form.customDiscounts,
         wishes: form.wishes,
         directPackageDiscount: form.directPackageDiscount,
         arrangerNotes: form.arrangerNotes,
@@ -942,6 +949,18 @@ export default function Home() {
               setForm((f) => ({
                 ...f,
                 arrangerNotes: f.arrangerNotes.filter((n) => n.id !== id),
+              }))
+            }
+            addCustomDiscount={(discount) =>
+              setForm((f) => ({
+                ...f,
+                customDiscounts: [...f.customDiscounts, discount],
+              }))
+            }
+            removeCustomDiscount={(id) =>
+              setForm((f) => ({
+                ...f,
+                customDiscounts: f.customDiscounts.filter((c) => c.id !== id),
               }))
             }
           />
@@ -1555,6 +1574,120 @@ function StepDisbursements({
   );
 }
 
+function DiscountsPanel({
+  discounts,
+  onAdd,
+  onRemove,
+}: {
+  discounts: CustomDiscount[];
+  onAdd: (d: CustomDiscount) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [amountText, setAmountText] = useState("");
+
+  const handleAdd = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const parsed = Number.parseFloat(amountText.replace(/[^0-9.\-]/g, ""));
+    const amount = Number.isFinite(parsed) ? Math.abs(parsed) : 0;
+    if (amount <= 0) return;
+    onAdd({
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      label: trimmed,
+      amount,
+    });
+    setLabel("");
+    setAmountText("");
+  };
+
+  return (
+    <section className="mt-7 rounded-xl border border-mist-200 bg-mist-50 p-5">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-800">
+        Apply a discount
+      </h3>
+      <p className="mt-1 text-xs text-mist-400">
+        Loyalty, returning-family, pre-payment, manager discretion — type the
+        reason and the £ amount. The discount appears as a negative line in
+        the estimate and reduces every figure that follows (total, monthly,
+        amount to finance).
+      </p>
+
+      {discounts.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {discounts.map((d) => (
+            <li
+              key={d.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-mist-200 bg-white p-3"
+            >
+              <span className="flex-1 text-sm text-navy-900">{d.label}</span>
+              <span className="text-sm font-medium text-red-700">
+                − {formatGBP(d.amount)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(d.id)}
+                className="text-mist-400 hover:text-navy-900"
+                aria-label={`Remove ${d.label}`}
+                title="Remove"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px_auto] sm:items-end">
+        <div>
+          <label className="field-label" htmlFor="discount-label">Reason</label>
+          <input
+            id="discount-label"
+            className="field-input"
+            placeholder="e.g. Loyalty discount — returning family"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+          />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="discount-amount">Amount (£)</label>
+          <input
+            id="discount-amount"
+            className="field-input"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={amountText}
+            onChange={(e) => setAmountText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          className="btn-primary sm:w-auto"
+          onClick={handleAdd}
+          disabled={!label.trim()}
+        >
+          Add discount
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function CustomChargesPanel({
   charges,
   onAdd,
@@ -1695,6 +1828,8 @@ function StepSummary({
   setShowFinanceOptions,
   addArrangerNote,
   removeArrangerNote,
+  addCustomDiscount,
+  removeCustomDiscount,
 }: {
   form: FormState;
   lines: ReturnType<typeof buildSelectedLines>;
@@ -1703,6 +1838,8 @@ function StepSummary({
   setShowFinanceOptions: (on: boolean) => void;
   addArrangerNote: (note: ArrangerNote) => void;
   removeArrangerNote: (id: string) => void;
+  addCustomDiscount: (discount: CustomDiscount) => void;
+  removeCustomDiscount: (id: string) => void;
 }) {
   const apr = useInstalmentApr();
   const aprPct = apr * 100;
@@ -1862,6 +1999,12 @@ function StepSummary({
           </dl>
         </section>
       )}
+
+      <DiscountsPanel
+        discounts={form.customDiscounts}
+        onAdd={addCustomDiscount}
+        onRemove={removeCustomDiscount}
+      />
 
       <section className="mt-5 rounded-xl bg-navy-700 p-5 text-white">
         <div className="flex items-baseline justify-between">
@@ -2245,6 +2388,7 @@ function SummaryActions({
       additionalServices: form.additionalServices,
       disbursements: form.disbursements,
       customDisbursements: form.customDisbursements,
+      customDiscounts: form.customDiscounts,
       wishes: form.wishes,
       directPackageDiscount: form.directPackageDiscount,
       // Arranger notes — staff log that follows the estimate. Persisted

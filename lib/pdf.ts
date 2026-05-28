@@ -48,7 +48,7 @@ const CATEGORY_LABEL: Record<SelectedLine["category"], string> = {
   transport: "Transport",
   additional_service: "Additional service",
   disbursement: "Third-party / disbursement",
-  discount: "Package discount",
+  discount: "Discount",
   admin_fee: "Plan administration",
 };
 

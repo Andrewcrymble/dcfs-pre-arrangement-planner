@@ -218,6 +218,24 @@ export function buildSelectedLines(form: FormState, items: PriceItem[]): Selecte
     push("discount", DIRECT_PACKAGE_DISCOUNT_NAME);
   }
 
+  // Arranger-applied discounts. Stored as positive amounts on the form,
+  // rendered as negative-priced "discount" lines so the existing
+  // funeralTotal / grandTotal / amountToFinance pipeline picks them up
+  // without any further plumbing. Empty labels and zero/negative amounts
+  // are dropped — they'd just add visual noise to the summary and PDF.
+  if (Array.isArray(form.customDiscounts)) {
+    form.customDiscounts
+      .filter((c) => c.label.trim() !== "" && c.amount > 0)
+      .forEach((c) =>
+        lines.push({
+          category: "discount",
+          item_name: c.label.trim(),
+          description: "",
+          price: -Math.abs(c.amount),
+        }),
+      );
+  }
+
   // Admin fees are automatically applied to every plan.
   items
     .filter((i) => i.category === "admin_fee")
