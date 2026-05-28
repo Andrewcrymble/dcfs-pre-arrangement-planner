@@ -161,6 +161,13 @@ export default function DashboardPage() {
   const [msStatus, setMsStatus] = useState<MsStatus | null>(null);
   const [toast, setToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
+  // Drag-and-drop state. `draggingRef` dims the card being dragged;
+  // `dragOverStatus` highlights the column the cursor is hovering over.
+  // Cleared on dragend/drop so a cancelled drag (escape key, dropped
+  // outside any column) leaves the UI clean.
+  const [draggingRef, setDraggingRef] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
   // Booking form
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookingBusy, setBookingBusy] = useState(false);
@@ -250,6 +257,40 @@ export default function DashboardPage() {
       });
     } finally {
       setUpdatingRef(null);
+    }
+  };
+
+  // Drop handler — moves a card to the target column's status, filling in
+  // the appropriate date field with today's date as a default so the UI
+  // is consistent with the inline buttons. Staff can refine times via
+  // Edit appointment / Mark quoted afterwards.
+  const handleStatusDrop = async (ref: string, newStatus: string) => {
+    const row = estimates.find((e) => e.Ref === ref);
+    if (!row) return;
+    const currentStatus = (row.Status || "").trim() || STATUS_QUOTED;
+    if (currentStatus === newStatus) return;
+    if (newStatus === STATUS_DRAFT) {
+      // Drafts are wizard-incomplete work — moving here manually would
+      // strand the row in a state the wizard can't make sense of.
+      setToast({
+        kind: "error",
+        text: "Drag-drop into Drafts isn't supported — use the wizard to create drafts.",
+      });
+      return;
+    }
+    const todayUk = new Date().toLocaleDateString("en-GB");
+    if (newStatus === STATUS_APPOINTMENT) {
+      const appointmentDate = row["Appointment Date"] || `${todayUk} 10:00`;
+      await updateStatus(ref, {
+        status: STATUS_APPOINTMENT,
+        appointmentDate,
+      });
+    } else if (newStatus === STATUS_SENT_TO_WG) {
+      const sentToWG = row["Sent to WG"] || todayUk;
+      await updateStatus(ref, { status: STATUS_SENT_TO_WG, sentToWG });
+    } else if (newStatus === STATUS_QUOTED) {
+      const quotedDate = row["Quoted Date"] || todayUk;
+      await updateStatus(ref, { status: STATUS_QUOTED, quotedDate });
     }
   };
 
@@ -595,11 +636,23 @@ export default function DashboardPage() {
         href={`/new?ref=${encodeURIComponent(row.Ref)}`}
         target="_blank"
         rel="noopener noreferrer"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/plain", row.Ref);
+          e.dataTransfer.effectAllowed = "move";
+          setDraggingRef(row.Ref);
+        }}
+        onDragEnd={() => {
+          setDraggingRef(null);
+          setDragOverStatus(null);
+        }}
         className={`block cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition hover:border-navy-400 hover:shadow-soft ${
           isDraft
             ? "border-gold-300 bg-gold-50/40"
             : "border-mist-200"
-        } ${pairColor ? `border-l-4 ${pairColor.border}` : ""}`}
+        } ${pairColor ? `border-l-4 ${pairColor.border}` : ""} ${
+          draggingRef === row.Ref ? "opacity-50" : ""
+        }`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -933,29 +986,69 @@ export default function DashboardPage() {
     title,
     rows,
     accent,
+    status,
   }: {
     title: string;
     rows: EstimateRow[];
     accent: string;
-  }) => (
-    <section className="flex flex-col">
-      <header className="mb-3 flex items-baseline justify-between">
-        <h2 className={`heading-serif text-xl ${accent}`}>{title}</h2>
-        <span className="text-xs text-mist-400">{rows.length}</span>
-      </header>
-      {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-mist-200 bg-white/50 p-4 text-center text-sm text-mist-400">
-          Nothing here yet.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((r) => (
-            <Card key={r.Ref || r.Created + r.Customer} row={r} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
+    status: string;
+  }) => {
+    const isDragOver = dragOverStatus === status;
+    const isDraftCol = status === STATUS_DRAFT;
+    return (
+      <section
+        className={`flex flex-col rounded-xl transition ${
+          isDragOver
+            ? isDraftCol
+              ? "bg-red-50 ring-2 ring-red-300"
+              : "bg-navy-50 ring-2 ring-navy-400"
+            : ""
+        }`}
+        onDragOver={(e) => {
+          // preventDefault on dragover is REQUIRED to allow a drop —
+          // without it the cursor shows the "no entry" icon and onDrop
+          // never fires.
+          if (draggingRef) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = isDraftCol ? "none" : "move";
+            if (dragOverStatus !== status) setDragOverStatus(status);
+          }
+        }}
+        onDragLeave={(e) => {
+          // Only clear when leaving the section entirely (not when moving
+          // between child cards inside it).
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDragOverStatus((s) => (s === status ? null : s));
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const ref = e.dataTransfer.getData("text/plain");
+          setDraggingRef(null);
+          setDragOverStatus(null);
+          if (ref) handleStatusDrop(ref, status);
+        }}
+      >
+        <header className="mb-3 flex items-baseline justify-between px-2 pt-2">
+          <h2 className={`heading-serif text-xl ${accent}`}>{title}</h2>
+          <span className="text-xs text-mist-400">{rows.length}</span>
+        </header>
+        {rows.length === 0 ? (
+          <p className="mx-2 mb-2 rounded-lg border border-dashed border-mist-200 bg-white/50 p-4 text-center text-sm text-mist-400">
+            {isDragOver && !isDraftCol
+              ? "Drop here to move"
+              : "Nothing here yet."}
+          </p>
+        ) : (
+          <div className="space-y-3 px-2 pb-2">
+            {rows.map((r) => (
+              <Card key={r.Ref || r.Created + r.Customer} row={r} />
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
 
   return (
     <div>
@@ -1143,22 +1236,30 @@ export default function DashboardPage() {
           }`}
         >
           {cols.drafts.length > 0 && (
-            <Column title="Drafts" rows={cols.drafts} accent="text-gold-800" />
+            <Column
+              title="Drafts"
+              rows={cols.drafts}
+              accent="text-gold-800"
+              status={STATUS_DRAFT}
+            />
           )}
           <Column
             title="Plans quoted"
             rows={cols.quoted}
             accent="text-navy-900"
+            status={STATUS_QUOTED}
           />
           <Column
             title="Plan appointments"
             rows={cols.appts}
             accent="text-navy-900"
+            status={STATUS_APPOINTMENT}
           />
           <Column
             title="Sent to With Grace"
             rows={cols.sent}
             accent="text-navy-900"
+            status={STATUS_SENT_TO_WG}
           />
         </div>
       )}
