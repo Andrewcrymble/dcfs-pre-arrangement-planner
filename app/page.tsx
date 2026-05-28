@@ -730,7 +730,7 @@ export default function DashboardPage() {
             <button
               type="button"
               disabled={isUpdating}
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 // Pre-fill the prompts from the existing appointment value
@@ -771,10 +771,62 @@ export default function DashboardPage() {
                 const appointmentDate = timeOk
                   ? `${date} ${time.trim()}`
                   : date;
-                updateStatus(row.Ref, {
+                const wasAppointment = status === STATUS_APPOINTMENT;
+                await updateStatus(row.Ref, {
                   status: STATUS_APPOINTMENT,
                   appointmentDate,
                 });
+                // Best-effort: drop a matching event into the connected
+                // Outlook calendar, same way the phone-booking form does.
+                // Requires a parseable time — Outlook needs a specific slot.
+                if (!msStatus?.connected || !timeOk) return;
+                // Editing an existing appointment creates a NEW Outlook
+                // event (we don't store the event ID for in-place updates).
+                // Ask first so staff can skip and avoid a duplicate when
+                // they've already corrected it manually in Outlook.
+                if (wasAppointment) {
+                  const proceed = window.confirm(
+                    "Add the updated time to Outlook as a new event? The previous Outlook entry won't be removed automatically.",
+                  );
+                  if (!proceed) return;
+                }
+                const dateParts = date.trim().match(
+                  /^(\d{2})\/(\d{2})\/(\d{4})$/,
+                );
+                if (!dateParts) return;
+                const startIso =
+                  `${dateParts[3]}-${dateParts[2]}-${dateParts[1]}` +
+                  `T${time.trim()}:00`;
+                const endIso = addMinutesIso(startIso, 30);
+                const subject =
+                  `Pre-arrangement appointment — ${row.Customer || row.Ref}`;
+                const bodyHtml =
+                  `<p>Reference: <b>${row.Ref}</b></p>` +
+                  `<p>Phone: ${row.Phone || "—"}</p>` +
+                  `<p>Branch: ${row.Branch || "—"}</p>`;
+                try {
+                  const res = await fetch("/api/microsoft/event", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      subject,
+                      start: startIso,
+                      end: endIso,
+                      location: row.Branch || undefined,
+                      bodyHtml,
+                    }),
+                  });
+                  if (res.ok) {
+                    setToast({
+                      kind: "success",
+                      text: wasAppointment
+                        ? "Updated · new event added to Outlook"
+                        : "Booked · added to Outlook",
+                    });
+                  }
+                } catch {
+                  // Silent — booking row was saved either way.
+                }
               }}
               className="rounded-md bg-navy-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-navy-700 disabled:opacity-50"
             >
