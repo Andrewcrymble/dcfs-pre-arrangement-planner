@@ -18,9 +18,9 @@ export const FINANCE_MAX_AGE = 80;
 
 // Absolute ceiling on the finance term — even a 50-year-old who could
 // in theory pay for 29 years before hitting FINANCE_MAX_AGE is offered
-// at most 10 years. Acts in concert with the age cap; whichever is
+// at most 5 years. Acts in concert with the age cap; whichever is
 // shorter wins.
-export const FINANCE_MAX_TERM_YEARS = 10;
+export const FINANCE_MAX_TERM_YEARS = 5;
 
 export interface MonthlyOption {
   months: number;
