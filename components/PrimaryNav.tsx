@@ -15,6 +15,7 @@ interface SubLink {
 const PREARRANGEMENT_LINKS: SubLink[] = [
   { href: "/", label: "Dashboard" },
   { href: "/new", label: "New estimate" },
+  { href: "/web-estimates", label: "Web estimates" },
   { href: "/calculator", label: "Calculator" },
   { href: "/change-password", label: "Change password" },
 ];

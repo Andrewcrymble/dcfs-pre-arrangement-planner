@@ -24,6 +24,7 @@ import { DIRECT_PACKAGE_DISCOUNT_NAME } from "@/lib/types";
 import { generateEstimatePdf } from "@/lib/pdf";
 import { generateEstimateId } from "@/lib/estimate";
 import PostcodeCouncil from "@/components/PostcodeCouncil";
+import { councilFee } from "@/lib/charges";
 import type {
   ArrangerNote,
   Branch,
@@ -221,6 +222,30 @@ const TRANSPORT_DEFAULTS = [
 export default function Home() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+
+  // Council burial/cremation fee — same logic as the public website. Adds/updates
+  // a custom disbursement ("auto-council-fee") whenever funeral type + council change.
+  useEffect(() => {
+    const ft = form.funeralType;
+    const council = form.customer.councilDistrict;
+    if (!ft || !council) return;
+    const isCremation = /cremation/i.test(ft);
+    if (!isCremation && !/burial/i.test(ft)) return;
+    let cancelled = false;
+    councilFee(council, isCremation, true).then((fee) => {
+      if (cancelled) return;
+      setForm((f) => {
+        const others = f.customDisbursements.filter((d) => d.id !== "auto-council-fee");
+        return fee
+          ? { ...f, customDisbursements: [...others, { id: "auto-council-fee", label: fee.label, price: fee.amount }] }
+          : { ...f, customDisbursements: others };
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.funeralType, form.customer.councilDistrict]);
+
   const [pricing, setPricing] = useState<PriceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
