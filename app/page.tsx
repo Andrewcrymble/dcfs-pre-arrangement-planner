@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import WebEstimatesBanner from "@/components/WebEstimatesBanner";
 import {
   monthlyInstalmentOptions,
   ageInYears,
@@ -1082,6 +1083,8 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      <WebEstimatesBanner />
 
       {/* Microsoft Calendar status banner */}
       {msStatus?.configured && !msStatus.connected && (
