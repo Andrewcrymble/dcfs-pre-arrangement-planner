@@ -38,3 +38,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 baseline_buildid.txt
+
+.vercel
+.env*
+
+# Cloudflare Workers build artefacts + local secrets
+.open-next/
+.wrangler/
+.dev.vars
+wrangler-dev.log

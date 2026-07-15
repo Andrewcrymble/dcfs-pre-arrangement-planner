@@ -7,43 +7,44 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Primary brand — Evolution FMS green
+        // Primary brand — Crymble Hub deep green
         navy: {
-          50: "#f3faea",
-          100: "#e2f4cd",
-          200: "#c5e89b",
-          300: "#a3da66",
-          400: "#82c93b",
-          500: "#6cb429",
-          600: "#569320",
-          700: "#45761c",
-          800: "#375d1a",
-          900: "#2a4715",
-          950: "#1a2e0d",
+          50: "#F1F5F0",
+          100: "#E4EDE3",
+          200: "#C9D9CA",
+          300: "#A2BDA6",
+          400: "#6F977C",
+          500: "#4A7560",
+          600: "#356049",
+          700: "#2A4D3A",
+          800: "#23402F",
+          900: "#1F3A2C",
+          950: "#142519",
         },
-        // Accent — Evolution FMS cyan/turquoise (section banners)
+        // Accent — Crymble Hub gold
         gold: {
-          50: "#ecfaff",
-          100: "#cdf2fa",
-          200: "#9fe5f3",
-          300: "#61d2e6",
-          400: "#2fbed4",
-          500: "#1aa5bd",
-          600: "#0e88a0",
-          700: "#0e6c81",
-          800: "#135969",
-          900: "#154858",
+          50: "#FAF5E8",
+          100: "#F0E7CF",
+          200: "#E4D4A8",
+          300: "#D6BF7E",
+          400: "#C6A353",
+          500: "#B08830",
+          600: "#96731F",
+          700: "#7A5D1C",
+          800: "#634B1C",
+          900: "#523F1B",
         },
+        // Warm parchment neutrals (Hub surfaces)
         mist: {
-          50: "#fafaf9",
-          100: "#f4f4f3",
-          200: "#e8e8e6",
-          300: "#d3d3d0",
-          400: "#a8a8a3",
+          50: "#FBF8F1",
+          100: "#F4EEE1",
+          200: "#EBE3D3",
+          300: "#E2D9C6",
+          400: "#9C9482",
         },
       },
       fontFamily: {
-        serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+        serif: ['Newsreader', 'Georgia', 'serif'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {

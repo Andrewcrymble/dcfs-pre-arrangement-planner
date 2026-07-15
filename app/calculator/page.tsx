@@ -89,7 +89,7 @@ export default function CalculatorPage() {
       </div>
 
       {/* Inputs card */}
-      <section className="rounded-2xl border border-mist-200 bg-[#fdfaf2] p-5 shadow-soft sm:p-7">
+      <section className="rounded-2xl border border-mist-200 bg-[#FBF8F1] p-5 shadow-soft sm:p-7">
         <h2 className="heading-serif text-xl text-navy-800">Plan details</h2>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -158,7 +158,7 @@ export default function CalculatorPage() {
       </section>
 
       {/* Results card */}
-      <section className="rounded-2xl border border-mist-200 bg-[#fdfaf2] p-5 shadow-soft sm:p-7">
+      <section className="rounded-2xl border border-mist-200 bg-[#FBF8F1] p-5 shadow-soft sm:p-7">
         <h2 className="heading-serif text-2xl text-navy-800">{inputs.planName || "Your plan"}</h2>
 
         <dl className="mt-5 space-y-2 text-sm">
@@ -222,9 +222,9 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function Highlight({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#7a1f2e]/20 bg-white px-4 py-3">
+    <div className="rounded-xl border border-[#7A5D1C]/20 bg-white px-4 py-3">
       <p className="text-xs uppercase tracking-wider text-mist-400">{label}</p>
-      <p className="heading-serif text-2xl font-semibold text-[#7a1f2e]">{value}</p>
+      <p className="heading-serif text-2xl font-semibold text-[#7A5D1C]">{value}</p>
     </div>
   );
 }
