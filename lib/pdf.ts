@@ -90,7 +90,16 @@ export async function generateEstimatePdf(
   form: FormState,
   lines: SelectedLine[],
   estimateId: string = generateEstimateId(),
-  options: { skipDownload?: boolean; arrangerName?: string; apr?: number } = {},
+  options: {
+    skipDownload?: boolean;
+    arrangerName?: string;
+    apr?: number;
+    // Prepend a near-blank carrier page for POSTED letters. Stannp prints
+    // the recipient address panel, its reference and its QR/barcode onto
+    // page 1 of whatever we send — so page 1 is theirs and the estimate
+    // itself starts untouched on page 2.
+    postCover?: boolean;
+  } = {},
 ): Promise<{ bytes: Uint8Array; filename: string; estimateId: string }> {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -960,6 +969,35 @@ export async function generateEstimatePdf(
   }
 
   } // end: if (showFinance)
+
+  if (options.postCover) {
+    // A4 in pt is 595×842. Everything above ~330pt (≈115mm) stays empty:
+    // that area belongs to Stannp's address window and machine marks.
+    doc.insertPage(1);
+    doc.setPage(1);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(31, 58, 44);
+    doc.text("David Crymble & Sons — Funeral Directors", margin, 350);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text(`Re: your pre-arrangement estimate — Ref ${estimateId}`, margin, 374);
+    doc.text(
+      "Please find your estimate enclosed. If you would like to talk anything through,",
+      margin,
+      400,
+    );
+    doc.text("please call us on 028 9066 7784 — we are happy to help.", margin, 416);
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(
+      "139 Upper Lisburn Road, Belfast, BT10 0LH  ·  330-332 Woodstock Road, Belfast, BT6 9DP  ·  Crymbleandsons.com",
+      margin,
+      452,
+    );
+    doc.setTextColor(0, 0, 0);
+  }
 
   const safeName = (form.customer.fullName || "estimate")
     .replace(/[^a-z0-9]+/gi, "_")

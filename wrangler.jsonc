@@ -5,6 +5,11 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
+  // The custom domain 409s while the zone still has the old `plans` CNAME →
+  // cname.vercel-dns.com. Once that record is deleted, this attaches on the
+  // next deploy. workers_dev stays on so the preview URL keeps working.
+  "workers_dev": true,
+  "routes": [{ "pattern": "plans.crymbleandsons.com", "custom_domain": true }],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

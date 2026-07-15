@@ -2368,6 +2368,13 @@ function SummaryActions({
 }) {
   const apr = useInstalmentApr();
   const [downloading, setDownloading] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postPreview, setPostPreview] = useState<{
+    url: string;
+    result: { bytes: Uint8Array; filename: string; estimateId: string };
+    name: string;
+    address: string;
+  } | null>(null);
   const [arrangerName, setArrangerName] = useState<string>("");
   const [toast, setToast] = useState<{
     kind: "success" | "error";
@@ -2677,6 +2684,108 @@ function SummaryActions({
     }
   };
 
+  // ── Post by letter (Stannp via the Hub) ──
+  // Two-step: build the letter (with its Stannp cover page) and show it in
+  // a preview modal first; nothing is posted until the arranger confirms.
+  const handlePostLetter = async () => {
+    if (downloading || posting) return;
+    const name = (form.customer.fullName || "").trim();
+    const address = (form.customer.address || "").trim();
+    const pcRe = /\b[A-Za-z]{1,2}[0-9][A-Za-z0-9]?\s*[0-9][A-Za-z]{2}\b/;
+    if (!name || !address) {
+      setToast({
+        kind: "error",
+        text: "The client needs a name and address (step 1) before this can be posted.",
+      });
+      return;
+    }
+    if (!pcRe.test(address)) {
+      setToast({
+        kind: "error",
+        text: "The client's address needs a postcode before this can be posted.",
+      });
+      return;
+    }
+    setDownloading(true);
+    try {
+      const result = await generateEstimatePdf(
+        form,
+        lines,
+        editRef || autoDraftRef?.current || undefined,
+        { skipDownload: true, arrangerName, apr, postCover: true },
+      );
+      const blob = new Blob([result.bytes.buffer as ArrayBuffer], {
+        type: "application/pdf",
+      });
+      setPostPreview({
+        url: URL.createObjectURL(blob),
+        result,
+        name,
+        address,
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({ kind: "error", text: "Couldn't generate the letter — please try again." });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const closePostPreview = () => {
+    if (postPreview) URL.revokeObjectURL(postPreview.url);
+    setPostPreview(null);
+  };
+
+  const confirmPostLetter = async () => {
+    if (!postPreview || posting) return;
+    setPosting(true);
+    try {
+      const r = await fetch("/api/post-letter", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pdf:
+            "data:application/pdf;base64," +
+            uint8ArrayToBase64(postPreview.result.bytes),
+          name: postPreview.name,
+          address: postPreview.address,
+          doc_name: `Pre-arrangement estimate — ${postPreview.result.estimateId}`,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) {
+        // Best-effort log to the Estimates dashboard, same as the
+        // download/WhatsApp paths — the letter is already on its way.
+        try {
+          await fetch("/api/upload-pdf", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(buildUploadBody(postPreview.result)),
+          });
+        } catch {}
+        setToast({
+          kind: "success",
+          text: `Letter posted${j.price ? ` (${j.price})` : ""} · Ref ${postPreview.result.estimateId}`,
+        });
+        closePostPreview();
+        clearDraft();
+        onDraftConsumed?.();
+      } else {
+        setToast({
+          kind: "error",
+          text: "Post failed: " + (j?.error || "the postal service rejected the letter."),
+        });
+      }
+    } catch (err) {
+      setToast({
+        kind: "error",
+        text: "Post failed — " + (err instanceof Error ? err.message : "network error"),
+      });
+    } finally {
+      setPosting(false);
+    }
+  };
+
   // Open a fresh wizard tab pre-filled with this household's contact
   // details so the arranger can quote a partner without re-typing phone,
   // email, branch, address. The new quote saves as a separate record;
@@ -2730,7 +2839,75 @@ function SummaryActions({
         >
           {downloading ? "Generating…" : "⬇ Download PDF Estimate"}
         </button>
+        <button
+          type="button"
+          onClick={handlePostLetter}
+          disabled={downloading || posting}
+          className="btn-secondary"
+        >
+          {downloading ? "Preparing…" : "📮 Post by letter"}
+        </button>
       </div>
+
+      {postPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Letter preview"
+        >
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-mist-50 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-mist-200 px-5 py-4">
+              <div>
+                <h3 className="heading-serif text-xl font-semibold text-navy-900">
+                  Preview before posting
+                </h3>
+                <p className="mt-1 text-sm text-navy-800">
+                  Will be printed, enveloped and mailed to:{" "}
+                  <span className="font-medium">
+                    {postPreview.name}, {postPreview.address}
+                  </span>
+                </p>
+                <p className="mt-0.5 text-xs text-mist-400">
+                  Page 1 is the address carrier — Stannp prints the address and
+                  its postal marks there. Your estimate starts on page 2.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closePostPreview}
+                className="rounded-lg px-2 py-1 text-2xl leading-none text-navy-700 hover:bg-mist-100"
+                aria-label="Close preview"
+              >
+                ×
+              </button>
+            </div>
+            <iframe
+              src={postPreview.url}
+              title="Letter preview"
+              className="min-h-0 w-full flex-1 bg-white"
+            />
+            <div className="flex flex-col gap-2 border-t border-mist-200 px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closePostPreview}
+                disabled={posting}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPostLetter}
+                disabled={posting}
+                className="btn-gold"
+              >
+                {posting ? "Posting…" : "📮 Post letter (about £1)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex justify-end">
         <button
           type="button"
