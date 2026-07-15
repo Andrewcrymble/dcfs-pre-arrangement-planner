@@ -231,6 +231,17 @@ export async function generateEstimatePdf(
   doc.text(openingLines, margin, y);
   y += openingLines.length * 16 + 6;
 
+  // Personal message from the arranger — sits in the letter body itself,
+  // straight after the opening line. Capped at 600 chars in the wizard so
+  // the letter always stays on page 1.
+  const coverMsg =
+    typeof form.coverMessage === "string" ? form.coverMessage.trim() : "";
+  if (coverMsg) {
+    const msgLines = doc.splitTextToSize(coverMsg, contentWidth);
+    doc.text(msgLines, margin, y);
+    y += msgLines.length * 16 + 6;
+  }
+
   // Headline figure — set as a serif headline between two hairline gold
   // rules. Quieter than the previous brand-green fill, reads more like a
   // private stationer's invoice than a marketing tile. The "5 years

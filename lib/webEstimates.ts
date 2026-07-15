@@ -120,6 +120,7 @@ export function webEstimateToFormState(e: WebEstimate): FormState {
       },
     ],
     deposit: 0,
+    coverMessage: "",
     notesForClient: "",
     showFinanceOptions: true,
   };

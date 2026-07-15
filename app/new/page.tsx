@@ -135,6 +135,7 @@ const EMPTY_FORM: FormState = {
   directPackageDiscount: false,
   arrangerNotes: [],
   deposit: 0,
+  coverMessage: "",
   notesForClient: "",
   showFinanceOptions: true,
 };
@@ -370,6 +371,10 @@ export default function Home() {
                 typeof snap.deposit === "number" && Number.isFinite(snap.deposit)
                   ? snap.deposit
                   : prev.deposit,
+              coverMessage:
+                typeof snap.coverMessage === "string"
+                  ? snap.coverMessage
+                  : prev.coverMessage,
               notesForClient:
                 typeof snap.notesForClient === "string"
                   ? snap.notesForClient
@@ -566,6 +571,7 @@ export default function Home() {
       directPackageDiscount: form.directPackageDiscount,
       arrangerNotes: form.arrangerNotes,
       deposit: form.deposit,
+      coverMessage: form.coverMessage,
       notesForClient: form.notesForClient,
       showFinanceOptions: form.showFinanceOptions,
     };
@@ -656,7 +662,8 @@ export default function Home() {
         directPackageDiscount: form.directPackageDiscount,
         arrangerNotes: form.arrangerNotes,
         deposit: form.deposit,
-        notesForClient: form.notesForClient,
+        coverMessage: form.coverMessage,
+      notesForClient: form.notesForClient,
         showFinanceOptions: form.showFinanceOptions,
       };
       const res = await fetch("/api/estimates", {
@@ -956,6 +963,10 @@ export default function Home() {
           <StepNotesForClient
             value={form.notesForClient}
             onChange={(text) => setForm((f) => ({ ...f, notesForClient: text }))}
+            coverMessage={form.coverMessage}
+            onCoverMessageChange={(text) =>
+              setForm((f) => ({ ...f, coverMessage: text }))
+            }
           />
         )}
         {stepKey === "summary" && (
@@ -1425,12 +1436,125 @@ function StepWishes({
   );
 }
 
+// "✨ Check with AI" under a textarea: sends the text to /api/proofread
+// (which relays to the Hub's Claude) and offers the corrected version for
+// one-click acceptance. Nothing is changed without the arranger's say-so.
+function AiProofread({
+  text,
+  onReplace,
+}: {
+  text: string;
+  onReplace: (corrected: string) => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<
+    | { kind: "ok"; corrected: string; changes: string[] }
+    | { kind: "clean" }
+    | { kind: "error"; message: string }
+    | null
+  >(null);
+
+  const run = async () => {
+    if (checking || !text.trim()) return;
+    setChecking(true);
+    setResult(null);
+    try {
+      const r = await fetch("/api/proofread", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok && typeof j.corrected === "string") {
+        if (j.corrected.trim() === text.trim()) setResult({ kind: "clean" });
+        else
+          setResult({
+            kind: "ok",
+            corrected: j.corrected,
+            changes: Array.isArray(j.changes) ? j.changes : [],
+          });
+      } else {
+        setResult({
+          kind: "error",
+          message: j?.error || "The AI check is unavailable right now.",
+        });
+      }
+    } catch {
+      setResult({ kind: "error", message: "Network error — please try again." });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={run}
+        disabled={checking || !text.trim()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-navy-200 bg-mist-50 px-3 py-1.5 text-sm font-medium text-navy-800 transition hover:border-navy-400 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {checking ? "Checking…" : "✨ Check spelling & grammar"}
+      </button>
+
+      {result?.kind === "clean" && (
+        <p className="mt-2 text-sm font-medium text-navy-700">
+          ✓ Reads well — no corrections needed.
+        </p>
+      )}
+      {result?.kind === "error" && (
+        <p className="mt-2 text-sm text-red-700">{result.message}</p>
+      )}
+      {result?.kind === "ok" && (
+        <div className="mt-3 rounded-xl border border-gold-300 bg-gold-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gold-800">
+            Suggested wording
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-navy-900">
+            {result.corrected}
+          </p>
+          {result.changes.length > 0 && (
+            <ul className="mt-2 list-inside list-disc text-xs text-navy-800">
+              {result.changes.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onReplace(result.corrected);
+                setResult(null);
+              }}
+              className="rounded-lg bg-navy-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+            >
+              Use corrected
+            </button>
+            <button
+              type="button"
+              onClick={() => setResult(null)}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-navy-700 hover:bg-mist-100"
+            >
+              Keep mine
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepNotesForClient({
   value,
   onChange,
+  coverMessage,
+  onCoverMessageChange,
 }: {
   value: string;
   onChange: (text: string) => void;
+  coverMessage: string;
+  onCoverMessageChange: (text: string) => void;
 }) {
   return (
     <div>
@@ -1444,6 +1568,22 @@ function StepNotesForClient({
       </p>
 
       <div className="mt-6">
+        <label className="field-label">Personal message — cover letter</label>
+        <textarea
+          className="field-input min-h-[120px]"
+          maxLength={600}
+          placeholder="e.g. It was lovely to meet you and your daughter on Tuesday. Please take all the time you need with this — I'm always at the end of the phone."
+          value={coverMessage}
+          onChange={(e) => onCoverMessageChange(e.target.value)}
+        />
+        <p className="mt-1 text-xs text-mist-400">
+          Printed in the letter itself, right after the opening line. Keep it
+          short — it sits on the letter's first page. Optional.
+        </p>
+        <AiProofread text={coverMessage} onReplace={onCoverMessageChange} />
+      </div>
+
+      <div className="mt-6">
         <label className="field-label">Notes</label>
         <textarea
           className="field-input min-h-[200px]"
@@ -1452,6 +1592,7 @@ function StepNotesForClient({
           onChange={(e) => onChange(e.target.value)}
         />
         <p className="mt-1 text-xs text-mist-400">Optional — leave blank if there's nothing to add.</p>
+        <AiProofread text={value} onReplace={onChange} />
       </div>
     </div>
   );
@@ -2429,6 +2570,7 @@ function SummaryActions({
       // picks it up later.
       arrangerNotes: form.arrangerNotes,
       deposit: form.deposit,
+      coverMessage: form.coverMessage,
       notesForClient: form.notesForClient,
       showFinanceOptions: form.showFinanceOptions,
     };

@@ -119,6 +119,10 @@ export interface FormState {
   // estimate is prepared). Deducted from the grand total before the
   // instalment APR calculation, and shown on the cover letter PDF.
   deposit: number;
+  // Personal message written into the COVER LETTER itself, right after
+  // the opening line — a warm, personal note from the arranger to the
+  // client. Kept short (the letter must stay on page 1).
+  coverMessage: string;
   // Free-text notes the arranger writes for the customer. Distinct from
   // `arrangerNotes` (staff-only) — these DO appear on the customer PDF.
   notesForClient: string;
