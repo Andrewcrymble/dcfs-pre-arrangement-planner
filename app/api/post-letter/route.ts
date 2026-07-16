@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     name?: string;
     address?: string;
     doc_name?: string;
+    ref?: string;
   } | null = null;
   try {
     body = await req.json();
@@ -48,7 +49,30 @@ export async function POST(req: Request) {
         doc_name: (body.doc_name || "Pre-arrangement estimate").slice(0, 60),
       }),
     });
-    const j = await r.json().catch(() => ({}));
+    const j = (await r.json().catch(() => ({}))) as {
+      ok?: boolean;
+      price?: string;
+    };
+    // Paper trail: note the posting on the estimate's record (best-effort).
+    if (j?.ok && body.ref) {
+      try {
+        await fetch("https://crymbleandsons.com/api/planner", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            key,
+            action: "update_estimate",
+            ref: body.ref,
+            postNote:
+              "📮 Posted by letter to " +
+              (body.name || "") +
+              (j.price ? " (" + j.price + ")" : ""),
+          }),
+        });
+      } catch {
+        // logging must never fail the post itself
+      }
+    }
     // Always relay as 200 with ok:true/false — the wizard reads the body.
     return NextResponse.json(j);
   } catch (err) {

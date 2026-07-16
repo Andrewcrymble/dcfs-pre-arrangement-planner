@@ -982,10 +982,25 @@ export async function generateEstimatePdf(
   } // end: if (showFinance)
 
   if (options.postCover) {
-    // A4 in pt is 595×842. Everything above ~330pt (≈115mm) stays empty:
-    // that area belongs to Stannp's address window and machine marks.
+    // A4 in pt is 595×842. Stannp OCRs this first page to find the recipient,
+    // so the customer's address must be printed in the envelope-window
+    // position; Stannp's reference/QR marks land here too, keeping the
+    // estimate itself clean from page 2.
     doc.insertPage(1);
     doc.setPage(1);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    let ay = 140;
+    if (form.customer.fullName) { doc.text(form.customer.fullName, 72, ay); ay += 15; }
+    String(form.customer.address || "")
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((line) => {
+        doc.text(line, 72, ay);
+        ay += 15;
+      });
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.setTextColor(31, 58, 44);

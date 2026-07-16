@@ -2937,6 +2937,7 @@ function SummaryActions({
           name: postPreview.name,
           address: postPreview.address,
           doc_name: `Pre-arrangement estimate — ${postPreview.result.estimateId}`,
+          ref: postPreview.result.estimateId,
         }),
       });
       const j = await r.json().catch(() => ({}));
