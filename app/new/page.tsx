@@ -248,6 +248,35 @@ export default function Home() {
   }, [form.funeralType, form.customer.councilDistrict]);
 
   const [pricing, setPricing] = useState<PriceItem[]>([]);
+
+  // Cremation legally needs two doctor's certificates — add both fees the
+  // moment a cremation funeral type is picked (and remove them again if the
+  // choice changes to burial). Price comes from the master list's
+  // "Doctor's fee" item (kept as the pair), falling back to 2 × £82.
+  useEffect(() => {
+    const ft = form.funeralType;
+    if (!ft) return;
+    const isCremation = /cremation/i.test(ft);
+    setForm((f) => {
+      const others = f.customDisbursements.filter((d) => d.id !== "auto-doctor-fees");
+      if (!isCremation) {
+        return others.length === f.customDisbursements.length ? f : { ...f, customDisbursements: others };
+      }
+      if (f.customDisbursements.some((d) => d.id === "auto-doctor-fees")) return f;
+      const item = pricing.find(
+        (p) => p.category === "disbursement" && /doctor/i.test(p.item_name),
+      );
+      const price = item && item.price > 0 ? item.price : 164;
+      return {
+        ...f,
+        customDisbursements: [
+          ...others,
+          { id: "auto-doctor-fees", label: "Doctor's fees — cremation (2 certificates)", price },
+        ],
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.funeralType, pricing]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [source, setSource] = useState<"sheet" | "fallback">("sheet");
