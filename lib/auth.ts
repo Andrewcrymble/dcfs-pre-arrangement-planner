@@ -13,6 +13,10 @@ export interface SessionPayload {
 }
 
 export const SESSION_COOKIE = "dcfs_session";
+// Hub single sign-on pass — minted by crymbleandsons.com/admin/login for the
+// whole .crymbleandsons.com zone. Verified here with the shared HUB_SSO_SECRET,
+// so one Hub sign-in covers the planner with no separate login.
+export const SSO_COOKIE = "dcfs_sso";
 const SESSION_TTL_HOURS = 8;
 
 function getSecret(): Uint8Array {
@@ -40,19 +44,17 @@ function getEnvUsers(): AuthUser[] {
   }
 }
 
-// Read users that have been written to the Users tab of the pricing
-// spreadsheet via Apps Script (i.e. anyone who has changed their password
-// through the UI). Falls back gracefully on any error — the env-var users
-// keep working.
+// Read users whose passwords have been changed through the UI — stored in
+// the Crymble Hub (D1) since 2026-07-16; previously the Google Sheet "Users"
+// tab. Falls back gracefully on any error — the env-var users keep working.
 async function getSheetUsers(): Promise<AuthUser[]> {
-  const url = process.env.DRIVE_UPLOAD_URL;
-  const secret = process.env.DRIVE_UPLOAD_SECRET;
-  if (!url || !secret) return [];
+  const secret = process.env.HUB_LETTERS_KEY;
+  if (!secret) return [];
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch("https://crymbleandsons.com/api/planner", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ secret, action: "get_users" }),
+      body: JSON.stringify({ key: secret, action: "get_users" }),
       cache: "no-store",
       redirect: "follow",
     });
@@ -104,25 +106,24 @@ export async function setPassword(
   name: string,
   newPassword: string,
 ): Promise<void> {
-  const url = process.env.DRIVE_UPLOAD_URL;
-  const secret = process.env.DRIVE_UPLOAD_SECRET;
-  if (!url || !secret) {
+  const secret = process.env.HUB_LETTERS_KEY;
+  if (!secret) {
     throw new Error("Password storage is not configured on the server.");
   }
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  const resp = await fetch(url, {
+  const resp = await fetch("https://crymbleandsons.com/api/planner", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ secret, action: "set_password", name, passwordHash }),
+    body: JSON.stringify({ key: secret, action: "set_password", name, passwordHash }),
     cache: "no-store",
     redirect: "follow",
   });
   if (!resp.ok) {
-    throw new Error(`Sheet update failed: HTTP ${resp.status}`);
+    throw new Error(`Password store update failed: HTTP ${resp.status}`);
   }
   const data = (await resp.json()) as { ok?: boolean; error?: string };
   if (data.error || !data.ok) {
-    throw new Error(data.error || "Sheet update failed");
+    throw new Error(data.error || "Password store update failed");
   }
 }
 
@@ -145,6 +146,44 @@ export async function readSessionToken(token: string | undefined): Promise<Sessi
   } catch {
     return null;
   }
+}
+
+// Verify a Hub SSO pass. Returns the same SessionPayload shape as the
+// planner's own session so every consumer works unchanged.
+export async function readSsoToken(token: string | undefined): Promise<SessionPayload | null> {
+  if (!token) return null;
+  const raw = process.env.HUB_SSO_SECRET;
+  if (!raw || raw.length < 32) return null;
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(raw), {
+      algorithms: ["HS256"],
+    });
+    const name =
+      typeof payload.name === "string" && payload.name
+        ? payload.name
+        : typeof payload.email === "string"
+          ? payload.email
+          : "";
+    if (!name) return null;
+    return {
+      name,
+      iat: Number(payload.iat) || 0,
+      exp: Number(payload.exp) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// One call for "who is signed in?" — the planner's own session first, then
+// the Hub SSO pass.
+export async function readAnySession(
+  getCookie: (name: string) => string | undefined,
+): Promise<SessionPayload | null> {
+  return (
+    (await readSessionToken(getCookie(SESSION_COOKIE))) ||
+    (await readSsoToken(getCookie(SSO_COOKIE)))
+  );
 }
 
 export const SESSION_TTL_SECONDS = SESSION_TTL_HOURS * 60 * 60;

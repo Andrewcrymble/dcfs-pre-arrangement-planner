@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { readSessionToken, readSsoToken, SESSION_COOKIE, SSO_COOKIE } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login"];
 
@@ -33,9 +33,22 @@ export async function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const session = await readSessionToken(token);
+  let session = await readSessionToken(token);
+  // Hub single sign-on: a valid dcfs_sso pass (set by crymbleandsons.com's
+  // login for the whole zone) counts the same as a planner session.
+  if (!session) {
+    session = await readSsoToken(req.cookies.get(SSO_COOKIE)?.value);
+  }
 
   if (!session) {
+    // On the live domain, bounce via the Hub login — if the person is
+    // already signed in to the Hub it returns immediately with a pass, so
+    // staff never see a second login screen. Local dev keeps /login.
+    if (req.nextUrl.hostname.endsWith("crymbleandsons.com")) {
+      const hubLogin = new URL("https://crymbleandsons.com/admin/login");
+      hubLogin.searchParams.set("next", req.nextUrl.href);
+      return NextResponse.redirect(hubLogin);
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);

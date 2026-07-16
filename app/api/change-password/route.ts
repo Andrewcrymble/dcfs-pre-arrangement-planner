@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
+  readAnySession,
   readSessionToken,
   setPassword,
   verifyCredentials,
@@ -11,8 +12,7 @@ export async function POST(req: Request) {
   // Identify the caller from their session cookie. Middleware already
   // gates this route to authenticated users, but verify defensively here
   // so a stale or forged cookie can't change a password.
-  const token = cookies().get(SESSION_COOKIE)?.value;
-  const session = await readSessionToken(token);
+  const session = await readAnySession((n) => cookies().get(n)?.value);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }

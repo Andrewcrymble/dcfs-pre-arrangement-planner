@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { readAnySession, SESSION_COOKIE } from "@/lib/auth";
 import { callHeadstoneAction } from "@/lib/headstoneAppsScript";
 
 // /api/headstones/notify-mason — POST { orderId, force?: boolean }
@@ -17,8 +17,7 @@ export async function POST(req: Request) {
   if (typeof orderId !== "string" || !orderId) {
     return NextResponse.json({ error: "orderId required" }, { status: 400 });
   }
-  const token = cookies().get(SESSION_COOKIE)?.value;
-  const session = await readSessionToken(token);
+  const session = await readAnySession((n) => cookies().get(n)?.value);
   const { data, error, status } = await callHeadstoneAction("notifyMason", {
     orderId,
     triggeredBy: session?.name || "Staff",
