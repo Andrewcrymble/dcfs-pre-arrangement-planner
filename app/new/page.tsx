@@ -778,7 +778,23 @@ export default function Home() {
         )}
       </div>
 
-      <ProgressBar current={safeStep} total={stepKeys.length} labels={stepLabels} />
+      <ProgressBar
+        current={safeStep}
+        total={stepKeys.length}
+        labels={stepLabels}
+        onJump={(i) => {
+          // Free movement backwards; forward jumps need the minimum customer
+          // details first (same rule as the step-1 Next button), otherwise a
+          // draft could save without a name to file it under.
+          if (i <= safeStep || customerValid) setStep(i);
+          else {
+            setTopToast({
+              kind: "error",
+              text: "Add the client's name, phone, branch and who it's for first (step 1), then you can jump anywhere.",
+            });
+          }
+        }}
+      />
 
       {resumePrompt && (
         <div className="mt-4 rounded-xl border border-gold-200 bg-gold-50 p-4 text-sm text-navy-900">
