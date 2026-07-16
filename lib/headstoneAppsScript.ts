@@ -99,7 +99,9 @@ export async function fetchProofData(orderId: string): Promise<AppsScriptRespons
   const { url, error } = urlAndOpts();
   if (error || !url) return { error, status: 503 };
   try {
-    const u = `${url}?action=getProofData&id=${encodeURIComponent(orderId)}`;
+    // The configured URL may already carry a query string (the Hub memorials
+    // API embeds its key there), so join with & in that case.
+    const u = `${url}${url.includes("?") ? "&" : "?"}action=getProofData&id=${encodeURIComponent(orderId)}`;
     const resp = await fetch(u, {
       method: "GET",
       cache: "no-store",
