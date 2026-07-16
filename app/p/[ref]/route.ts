@@ -16,9 +16,11 @@ export async function GET(
     return new NextResponse("Reference required", { status: 400 });
   }
 
-  const url = process.env.DRIVE_UPLOAD_URL;
-  const secret = process.env.DRIVE_UPLOAD_SECRET;
-  if (!url || !secret) {
+  // Estimate rows live in the Crymble Hub (D1); old rows still carry Drive
+  // PDF URLs, new ones carry crymbleandsons.com URLs — both redirect fine.
+  const url = "https://crymbleandsons.com/api/planner";
+  const secret = process.env.HUB_LETTERS_KEY;
+  if (!secret) {
     return new NextResponse("Service unavailable", { status: 503 });
   }
 
@@ -26,7 +28,7 @@ export async function GET(
     const resp = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ secret, action: "get_estimate", ref }),
+      body: JSON.stringify({ key: secret, action: "get_estimate", ref }),
       cache: "no-store",
       redirect: "follow",
     });

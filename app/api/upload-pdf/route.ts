@@ -43,11 +43,13 @@ export async function POST(req: Request) {
         }
       : person;
 
-  const url = process.env.DRIVE_UPLOAD_URL;
-  const secret = process.env.DRIVE_UPLOAD_SECRET;
-  if (!url || !secret) {
+  // PDFs live in the Crymble Hub's database (migrated off Google Drive
+  // 2026-07-16) and are served from a crymbleandsons.com URL.
+  const url = "https://crymbleandsons.com/api/planner";
+  const secret = process.env.HUB_LETTERS_KEY;
+  if (!secret) {
     return NextResponse.json(
-      { error: "Drive upload is not configured on the server" },
+      { error: "PDF storage is not configured on the server" },
       { status: 503 },
     );
   }
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        secret,
+        key: secret,
         action: "upload",
         pdfBase64,
         filename: typeof filename === "string" ? filename : "estimate.pdf",

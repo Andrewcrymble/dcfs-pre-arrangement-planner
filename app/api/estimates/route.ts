@@ -8,16 +8,18 @@ async function callAppsScript(
   action: string,
   extra: Record<string, unknown> = {},
 ): Promise<{ data?: unknown; error?: string; status: number }> {
-  const url = process.env.DRIVE_UPLOAD_URL;
-  const secret = process.env.DRIVE_UPLOAD_SECRET;
-  if (!url || !secret) {
+  // Estimates live in the Crymble Hub's D1 database (migrated off the
+  // Google Sheet 2026-07-16); same six actions, same row shape.
+  const url = "https://crymbleandsons.com/api/planner";
+  const secret = process.env.HUB_LETTERS_KEY;
+  if (!secret) {
     return { error: "Estimates store is not configured", status: 503 };
   }
   try {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ secret, action, ...extra }),
+      body: JSON.stringify({ key: secret, action, ...extra }),
       cache: "no-store",
       redirect: "follow",
     });
